@@ -190,7 +190,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Ammunition and fatigue:</b> the bars under a selected unit show ammunition (yellow) and freshness (blue). Fighting burns ammunition, which is restocked from depots (see Supply); out of ammunition, troops fight at a third of their strength and guns fall silent. Marching, fighting and digging tire troops, and tired troops move slower, hit softer and take more losses. They recover by resting, fastest well behind the line.</li>
       <li><b>Fog of war:</b> your own ground is always clear, but beyond the front you only see enemies within sight of your troops, depots and HQ (about 14 km; cavalry 20 km). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly, once the battle has started) to scout behind the lines: the strip it flies over stays visible for a while; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
       <li><b>Reinforcements:</b> before the battle you may deploy anywhere on your ground. Once it starts, new divisions come up by rail: place them within 7 km of a major city (2+ points) or your HQ that you hold and supply; these are circled while you place. Black's reinforcements arrive the same way, so taking its cities slows them down.</li>
-      <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, three to four times faster than on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
+      <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, about twice as fast as on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
       <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
@@ -563,7 +563,7 @@ function intoSide(x,y,s,dist){ // walk from the front into side s's ground
 
 /* movement: terrain speed, and a weighted grid path that goes around water, rough ground and enemy troops */
 const ROAD={inf:1.6,arm:1.7,art:1.8}; // road march: columns move far faster, even through rough country
-const RAILF={inf:4.5,arm:3.2,art:4.5}; // by train: only on your own ground and out of contact
+const RAILF={inf:3.2,arm:2.5,art:3.2}; // by train: only on your own ground and out of contact
 function spdF(type,c,side){let f=TER[M.land[c]][type];if(M.road[c])f=Math.max(f,0.7)*ROAD[type];
   if(M.rail&&M.rail[c]&&(side==null||G&&G.owner[c]===side))f=Math.max(f,RAILF[type]);return f*(1-0.55*(G?G.ter[c]:0));}
 function buildCosts(){M.cost={};for(const t of ["inf","arm","art"]){const a=new Float32Array(NC);for(let c=0;c<NC;c++)a[c]=M.water[c]?Infinity:1/Math.max(0.08,spdF(t,c))+(M.river[c]?1.2:0);M.cost[t]=a;}}
@@ -1581,7 +1581,7 @@ function syncUI(){
 function hud(){
   if(APP==="front"){cv.style.cursor="crosshair";return;}
   if(APP==="pick"){cv.style.cursor="grab";return;}
-  const mins=300+G.t*6,day=1+Math.floor(mins/1440),hh=Math.floor(mins%1440/60),mm=Math.floor(mins%60);
+  const mins=300+G.t*15,day=1+Math.floor(mins/1440),hh=Math.floor(mins%1440/60),mm=Math.floor(mins%60);
   $("clock").textContent=`D${day} ${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")} ${G.phase==="setup"?" · DEPLOY":G.phase==="over"?" · END":G.paused?" · PAUSED":""}`;
   const tot=G.vp[0]+G.vp[1]||1;$("vpfill").style.width=(100*G.vp[RED]/tot)+"%";
   $("vpR").textContent=`${G.vp[RED]}`;$("vpB").textContent=`${G.vp[BLK]}`;
