@@ -162,6 +162,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <button id="tLine" aria-pressed="false" title="Line: draw a front for the selected units to spread along (or right-drag)">Line</button>
       <button id="bDig" title="Dig: draw a defence line for the selected units, or press twice to dig in where they stand (D)">Dig</button>
       <button id="tRoad" aria-pressed="false" title="Road: draw a supply road from your ground (1 reserve per 25 km). Finished roads speed marches and feed depots">Road</button>
+      <button id="tShip" aria-pressed="false" title="Ship: with units selected, tap a shore across a sea or lake. They march to your nearest port, sail and land there (1 reserve per 3 divisions)">Ship</button>
       <button id="tRail" aria-pressed="false" title="Rail: draw a railway from your ground (1 reserve per 12 km). Trains move troops very fast on your own ground">Rail</button>
     </div>
     <div class="sep"></div>
@@ -191,6 +192,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Fog of war:</b> your own ground is always clear, but beyond the front you only see enemies within sight of your troops, depots and HQ (about 14 km; cavalry 20 km). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly, once the battle has started) to scout behind the lines: the strip it flies over stays visible for a while; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
       <li><b>Reinforcements:</b> before the battle you may deploy anywhere on your ground. Once it starts, new divisions come up by rail: place them within 7 km of a major city (2+ points) or your HQ that you hold and supply; these are circled while you place. Black's reinforcements arrive the same way, so taking its cities slows them down.</li>
       <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, about twice as fast as on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
+      <li><b>Ships:</b> towns on a sea or lake shore are ports (⚓). Select troops, press <b>Ship</b> and tap a shore on the same water: they march to your nearest port, board and sail, then land, even on the enemy's coast (1 reserve per 3 divisions). Troops landing on ground that isn't yours arrive tired and short of ammunition, and guns that can see a transport will fire on it. Black lands troops behind your coast too. Try the East Prussia map.</li>
       <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
@@ -219,6 +221,7 @@ const norm=s=>s.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/ł/g,"l").repla
 /* ---------- presets (lon/lat) ---------- */
 const PRESETS=[
  {name:"Your sketch: Leszno–Wrocław",bbox:[14.6,50.3,20.2,52.75],hq:["Zielona Góra","Kalisz"],front:[[16.42,52.8],[16.38,52.4],[16.43,52.05],[16.66,51.84],[16.80,51.62],[16.92,51.42],[16.95,51.22],[16.90,51.08],[16.93,50.9],[16.86,50.6],[16.78,50.25]]},
+ {name:"East Prussia 1914: Baltic and Masurian Lakes",bbox:[19.3,52.7,24.0,56.3],hq:["Königsberg","Kaunas"],front:[[21.07,55.9],[21.6,55.65],[22.1,55.25],[22.8,55.05],[22.75,54.6],[22.8,54.35],[22.45,54.1],[21.9,53.55],[21.0,53.4],[20.2,53.25],[19.3,53.1]]},
  {name:"Ardennes",bbox:[4.0,49.3,7.6,51.1],front:[[6.25,51.15],[6.1,50.6],[6.05,50.1],[6.35,49.6],[6.6,49.25]]},
  {name:"Normandy",bbox:[-2.3,48.5,1.2,49.8],front:[[-1.9,49.8],[-1.2,49.25],[-0.4,49.2],[0.4,49.4],[1.2,49.5]]},
  {name:"Kursk",bbox:[34.0,50.2,39.0,52.7],front:[[35.4,52.75],[36.1,52.1],[36.9,52.0],[37.5,51.6],[37.1,51.15],[36.4,50.95],[36.0,50.5],[36.1,50.15]]},
@@ -504,7 +507,7 @@ const T={
 };
 const HQ_HOLD=25,ENGAGE=6.5,CONTACT=3.4,DMG=1.5,MAXUNITS=60;
 // how sharp Black plays: how often it rethinks, how hard it hits, how fast it earns reserves
-const DIFFS={easy:{think:5,arm:14,air:10,fire:0.7,inc:0.5,rest:false,strikes:1,dig:0.35,recon:70},normal:{think:2.2,arm:6,air:4,fire:1,inc:1,rest:true,strikes:2,dig:0.6,recon:45},hard:{think:1.5,arm:4,air:3,fire:1.1,inc:1.3,rest:true,strikes:3,dig:0.9,recon:28}};
+const DIFFS={easy:{think:5,arm:14,air:10,fire:0.7,inc:0.5,rest:false,strikes:1,dig:0.35,recon:70,sea:200},normal:{think:2.2,arm:6,air:4,fire:1,inc:1,rest:true,strikes:2,dig:0.6,recon:45,sea:130},hard:{think:1.5,arm:4,air:3,fire:1.1,inc:1.3,rest:true,strikes:3,dig:0.9,recon:28,sea:90}};
 let DIFF=(()=>{try{return localStorage.getItem("front1914.diff")||"easy";}catch(e){return "easy";}})();if(!DIFFS[DIFF])DIFF="easy";
 const D_=()=>DIFFS[DIFF];
 let FOG=(()=>{try{return localStorage.getItem("front1914.fog")!=="0";}catch(e){return true;}})();
@@ -529,7 +532,7 @@ function newBattle(){
   const h=M.hq[BLK];if(h){for(const d of [-3,3]){const q=nearestCell(h.x+d*K,h.y,c=>!M.water[c]&&G.owner[c]===BLK);if(q)addUnit(BLK,"inf",q[0],q[1]).garrison=true;}}
   if(!M.road0)M.road0=M.road.slice();else M.road.set(M.road0);if(!M.rail0)M.rail0=M.rail.slice();else M.rail.set(M.rail0); // field roads from the last battle are gone
   seedDepots();
-  buildCosts();computeSupply();updateVP();aiSpendReserves(true);spot();
+  buildCosts();computeSupply();updateVP();aiSpendReserves(true);waterPrep();spot();
 }
 function scar(x,y,r,amt){ // churn the ground: craters, rubble, burnt fields
   const i0=Math.max(0,Math.floor((x-r)/CELL)),i1=Math.min(GW-1,Math.floor((x+r)/CELL)),j0=Math.max(0,Math.floor((y-r)/CELL)),j1=Math.min(GH-1,Math.floor((y+r)/CELL));
@@ -603,6 +606,7 @@ function astar(x0,y0,x1,y1,type,dg){
   return out;
 }
 function setOrder(u,x,y,dg){
+  if(u.sea){if(u.sea.stage!=="toPort")return;u.sea=null;} // aboard ship: orders wait until the landing; a new order before boarding cancels the trip
   let q=[clampX(x),clampY(y)];if(M.water[cellOf(q[0],q[1])]){q=nearestCell(q[0],q[1],c=>!M.water[c]);if(!q)return;}
   u.tx=q[0];u.ty=q[1];
   if(!M.cost)buildCosts();
@@ -611,7 +615,7 @@ function setOrder(u,x,y,dg){
   const C=M.cost[u.type],L=Math.hypot(q[0]-u.x,q[1]-u.y)/CELL;
   u.path=L<15*K/CELL&&lineClear(u.x,u.y,q[0],q[1])&&segCost(u.x,u.y,q[0],q[1],C)<=L*2.2+0.5?[q]:(astar(u.x,u.y,q[0],q[1],u.type)||[q]);
 }
-function aiOrder(u,x,y){if(u.tx!=null&&Math.hypot(u.tx-x,u.ty-y)<1.5*K)return;setOrder(u,x,y);}
+function aiOrder(u,x,y){if(u.sea)return;if(u.tx!=null&&Math.hypot(u.tx-x,u.ty-y)<1.5*K)return;setOrder(u,x,y);}
 
 /* casualties: a division is about 15,000 men. Strength is fighting power, not head count: most of a loss is shock, disorder and
    stragglers who come back, so only about 30% of it is real casualties (45 men per point), roughly one killed for every three wounded */
@@ -621,7 +625,7 @@ function step(dt){
   const U=G.units,ER=ENGAGE*K,s0=new Map(U.map(u=>[u.id,u.str]));
   for(const u of U)u.foes=[];
   for(let a=0;a<U.length;a++)for(let b=a+1;b<U.length;b++){
-    const u=U[a],v=U[b];if(u.side===v.side)continue;
+    const u=U[a],v=U[b];if(u.side===v.side||atSea(u)||atSea(v))continue;
     if(Math.abs(u.x-v.x)<ER&&Math.abs(u.y-v.y)<ER&&Math.hypot(u.x-v.x,u.y-v.y)<ER){u.foes.push(v);v.foes.push(u);}
   }
   const dmg=new Map();
@@ -638,7 +642,7 @@ function step(dt){
   }
   for(const u of U){
     const d=dmg.get(u)||0;u.str-=d;if(d>0)u.hit=0.4;else u.hit=Math.max(0,u.hit-dt);
-    if(!u.sup)u.str-=0.55*dt;else if(!u.eng)u.str=Math.min(100,u.str+(u.rest?2.2:1.1)*dt);
+    if(!u.sup&&!u.sea)u.str-=0.55*dt;else if(!u.eng)u.str=Math.min(100,u.str+(u.rest?2.2:1.1)*dt);
   }
   flyRecon(dt);bombard(dt);
   if(!G.cas)G.cas={dead:[0,0],wnd:[0,0]};
@@ -646,7 +650,9 @@ function step(dt){
   for(const u of U)if(u.str<=0){G.fx.push({k:"die",x:u.x,y:u.y,t:0,side:u.side});G.sel.delete(u.id);}
   G.units=G.units.filter(u=>u.str>0);
 
+  stepSea(dt);
   for(const u of G.units){
+    if(atSea(u)||u.sea&&u.sea.stage==="board")continue;
     if(!u.path||!u.path.length){u.path=null;u.tx=u.ty=null;u.ent=Math.min(1,u.ent+dt*0.035);continue;}
     u.ent=Math.max(0,u.ent-dt*0.6);
     const [wx_,wy_]=u.path[0],dx=wx_-u.x,dy=wy_-u.y,d=Math.hypot(dx,dy);
@@ -663,7 +669,7 @@ function step(dt){
   }
   const V=G.units,SP=2.4*K;
   for(let a=0;a<V.length;a++)for(let b=a+1;b<V.length;b++){
-    const u=V[a],v=V[b];if(u.side!==v.side)continue;
+    const u=V[a],v=V[b];if(u.side!==v.side||atSea(u)||atSea(v))continue;
     const dx=v.x-u.x,dy=v.y-u.y;if(Math.abs(dx)>SP||Math.abs(dy)>SP)continue;const d=Math.hypot(dx,dy)||0.01;
     if(d<SP){const p=(SP-d)*0.5*Math.min(1,dt*4);
       const ux=clampX(u.x-dx/d*p),uy=clampY(u.y-dy/d*p),vx=clampX(v.x+dx/d*p),vy=clampY(v.y+dy/d*p);
@@ -759,7 +765,7 @@ function bombard(dt){
     const ang=Math.random()*7,off=Math.random()*1.4*K,x=best.x+Math.cos(ang)*off,y=best.y+Math.sin(ang)*off,R=ARTY.blast*K;
     const pow=(0.4+0.6*a.str/100)*(a.sup?1:0.5)*(a.side===BLK?D_().fire:1);
     for(const e of G.units){if(e.side===a.side)continue;const d=Math.hypot(e.x-x,e.y-y);if(d>R)continue;
-      e.str-=ARTY.dmg*pow*(1-0.5*d/R)*(1-0.55*(e.cover||0))*(1-0.3*e.ent);e.hit=0.4;}
+      e.str-=ARTY.dmg*pow*(1-0.5*d/R)*(atSea(e)?2:(1-0.55*(e.cover||0))*(1-0.3*e.ent));e.hit=0.4;}
     for(const d of G.depots){if(d.s===a.side)continue;const dd=Math.hypot(d.x-x,d.y-y);if(dd<R)d.hp-=DEPOT.shell*pow*(1-0.5*dd/R);}
     scar(x,y,R,0.07);G.fx.push({k:"bomb",x,y,t:0});G.fx.push({k:"shot",x:a.x,y:a.y,t:0});
   }
@@ -818,6 +824,75 @@ function flyRecon(dt){
   G.aiRecon-=dt;if(G.aiRecon<=0&&G.res[BLK]>=1){G.aiRecon=D_().recon*(0.8+0.4*Math.random());
     const F=frontCells(RED);if(F.length){FIELD=field();const c=F[Math.floor(Math.random()*F.length)],q=awayFromRed(c,-14*K);launchRecon(BLK,q[0],q[1]);}}
 }
+/* ships: selected troops march to their nearest port (a town on a sea or lake shore held by their side), board,
+   sail along a water route and land on any shore reached by that water, the enemy's included. Landing on ground that is not
+   your own leaves troops tired and short of ammunition. Guns that can see a transport fire on it. */
+const SEA={speed:1.9,board:3,per:3,portR:4,landTired:60,landAmmo:45};
+function waterPrep(){ // label connected water bodies and find ports once per map
+  if(M.wcomp&&M.wcomp.length===NC)return;const comp=new Int32Array(NC).fill(-1);let n=0;
+  for(let c0=0;c0<NC;c0++){if(!M.water[c0]||comp[c0]>=0)continue;const st=[c0];comp[c0]=n;
+    while(st.length){const c=st.pop(),i=c%GW,j=(c-i)/GW;for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const a=i+di,b=j+dj;if(a<0||b<0||a>=GW||b>=GH)continue;const k=b*GW+a;if(M.water[k]&&comp[k]<0){comp[k]=n;st.push(k);}}}n++;}
+  M.wcomp=comp;
+  for(const t of M.towns){t.port=null;const q=nearestCell(t.x,t.y,c=>M.water[c]===1);if(q&&Math.hypot(q[0]-t.x,q[1]-t.y)<SEA.portR*K)t.port=q;}
+}
+const ports=s=>M.towns.filter(t=>t.port&&G.owner[t.c]===s&&G.sup[s][t.c]);
+function coastNear(x,y,comp){ // nearest land cell touching water of the given body
+  let best=null,bd=1e9;for(let c=0;c<NC;c++){if(M.water[c])continue;const i=c%GW,j=(c-i)/GW;let ok=false;
+    for(let dj=-1;dj<=1&&!ok;dj++)for(let di=-1;di<=1;di++){const a=i+di,b=j+dj;if(a<0||b<0||a>=GW||b>=GH)continue;const k=b*GW+a;if(M.water[k]&&M.wcomp[k]===comp){ok=true;break;}}
+    if(!ok)continue;const d=Math.hypot(cx(c)-x,cy(c)-y);if(d<bd){bd=d;best=c;}}return best;}
+function seaRoute(from,toLand){ // breadth-first over one water body, then pulled tight
+  const comp=M.wcomp[from],prev=new Int32Array(NC).fill(-2);prev[from]=-1;const q=[from];let end=-1,qi=0;
+  const ti=toLand%GW,tj=(toLand-ti)/GW;
+  while(qi<q.length){const c=q[qi++],i=c%GW,j=(c-i)/GW;if(Math.abs(i-ti)<=1&&Math.abs(j-tj)<=1){end=c;break;}
+    for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const a=i+di,b=j+dj;if(a<0||b<0||a>=GW||b>=GH)continue;const k=b*GW+a;if(prev[k]===-2&&M.water[k]&&M.wcomp[k]===comp){prev[k]=c;q.push(k);}}}
+  if(end<0)return null;const cells=[];for(let c=end;c>=0;c=prev[c])cells.push(c);cells.reverse();
+  const wet=(a,b)=>{const n=Math.ceil(Math.hypot(cx(b)-cx(a),cy(b)-cy(a))/(CELL*0.4));for(let m=1;m<n;m++){const c=cellOf(cx(a)+(cx(b)-cx(a))*m/n,cy(a)+(cy(b)-cy(a))*m/n);if(!M.water[c])return false;}return true;};
+  const out=[[cx(cells[0]),cy(cells[0])]];let k=0;while(k<cells.length-1){let f=cells.length-1;while(f>k+1&&!wet(cells[k],cells[f]))f--;out.push([cx(cells[f]),cy(cells[f])]);k=f;}
+  out.push([cx(toLand),cy(toLand)]);return out;
+}
+function shipOrder(units,x,y,side){
+  waterPrep();units=units.filter(u=>!u.sea||u.sea.stage==="toPort");if(!units.length)return false;
+  const P=ports(side);if(!P.length){if(side===RED)toast("You hold no port: ships load at a town on a sea or lake shore");return false;}
+  const mx=units.reduce((a,u)=>a+u.x,0)/units.length,my=units.reduce((a,u)=>a+u.y,0)/units.length;
+  // the port nearest the troops whose water reaches the target
+  const opts=P.map(t=>({t,comp:M.wcomp[cellOf(t.port[0],t.port[1])]})).sort((a,b)=>Math.hypot(a.t.x-mx,a.t.y-my)-Math.hypot(b.t.x-mx,b.t.y-my));
+  let pick=null,land=null;
+  for(const o of opts){const c=coastNear(x,y,o.comp);if(c!=null&&Math.hypot(cx(c)-x,cy(c)-y)<12*K){pick=o;land=c;break;}}
+  if(!pick){if(side===RED)toast("No water route from your ports to there: tap a shore on the same sea or lake");return false;}
+  const cost=Math.ceil(units.length/SEA.per);if(G.res[side]<cost){if(side===RED)toast(`Shipping ${units.length} division${units.length>1?"s":""} needs ${cost} reserve${cost>1?"s":""}`);return false;}
+  const route=seaRoute(cellOf(pick.t.port[0],pick.t.port[1]),land);if(!route){if(side===RED)toast("No water route to there");return false;}
+  G.res[side]-=cost;
+  units.forEach((u,k)=>{u.sea=null;setOrder(u,pick.t.x+(k%3-1)*1.2*K,pick.t.y+(Math.floor(k/3)-1)*1.2*K,side===RED?dangerMask(side,pick.t.x,pick.t.y):undefined);
+    const off=[(k%3-1)*1.2*K,(Math.floor(k/3)%3-1)*1.2*K],last=route[route.length-1];
+    u.sea={stage:"toPort",port:pick.t.name,px:pick.t.x,py:pick.t.y,route:route.slice(0,-1).concat([[last[0]+off[0],last[1]+off[1]]]),k:0,wait:SEA.board};u.dig=false;});
+  if(side===RED)toast(`${units.length} division${units.length>1?"s":""} marching to ${pick.t.name} to sail (${cost} reserve${cost>1?"s":""})`);
+  return true;
+}
+const atSea=u=>u.sea&&u.sea.stage==="sail";
+function stepSea(dt){
+  for(const u of G.units){const S=u.sea;if(!S)continue;
+    if(S.stage==="toPort"){if(Math.hypot(u.x-S.px,u.y-S.py)<2.2*K||!u.path){if(Math.hypot(u.x-S.px,u.y-S.py)<7*K){S.stage="board";u.path=null;u.tx=u.ty=null;}else{u.sea=null;}}continue;}
+    if(S.stage==="board"){if(G.owner[cellOf(S.px,S.py)]!==u.side){u.sea=null;if(u.side===RED)toast(`${S.port} fell before the troops could sail`);continue;}
+      S.wait-=dt;if(S.wait<=0){S.stage="sail";u.x=S.route[0][0];u.y=S.route[0][1];}continue;}
+    // sailing
+    let left=SEA.speed*K*dt;
+    while(left>0&&S.k<S.route.length){const [gx,gy]=S.route[S.k],dx=gx-u.x,dy=gy-u.y,d=Math.hypot(dx,dy);
+      if(d<=left){u.x=gx;u.y=gy;left-=d;S.k++;}else{u.x+=dx/d*left;u.y+=dy/d*left;u.ang=Math.atan2(dy,dx);left=0;}}
+    if(S.k>=S.route.length){u.sea=null;u.path=null;u.tx=u.ty=null;
+      if(G.owner[cellOf(u.x,u.y)]!==u.side){u.fat=Math.max(u.fat,SEA.landTired);u.ammo=Math.min(u.ammo,SEA.landAmmo);}
+      if(u.side===RED)toast("Troops landed");}
+  }
+  // Black: now and then ships a few idle divisions to land behind Red's coast
+  if(G.phase!=="battle")return;G.aiSea=(G.aiSea==null?D_().sea:G.aiSea)-dt;if(G.aiSea>0)return;
+  waterPrep();const P=ports(BLK);G.aiSeaWait=false;if(!P.length){G.aiSea=D_().sea;return;}
+  const comps=new Set(P.map(t=>M.wcomp[cellOf(t.port[0],t.port[1])]));
+  const targets=M.towns.filter(t=>t.port&&G.owner[t.c]===RED&&comps.has(M.wcomp[cellOf(t.port[0],t.port[1])])&&!G.units.some(u=>u.side===RED&&Math.hypot(u.x-t.x,u.y-t.y)<12*K));
+  if(!targets.length){G.aiSea=D_().sea*0.5;return;}const tg=targets.sort((a,b)=>b.vp-a.vp)[0];
+  const idle=G.units.filter(u=>u.side===BLK&&!u.sea&&!u.eng&&!u.garrison&&u.type!=="art"&&u.fat<50&&u.ammo>60&&u.role!=="rest").sort((a,b)=>Math.hypot(a.x-P[0].x,a.y-P[0].y)-Math.hypot(b.x-P[0].x,b.y-P[0].y)).slice(0,3);
+  if(idle.length<2){G.aiSea=20;return;}
+  if(G.res[BLK]<Math.ceil(idle.length/SEA.per)){G.aiSeaWait=true;return;} // hold reserves back for the shipping
+  shipOrder(idle,tg.x,tg.y,BLK);G.aiSea=D_().sea*(0.8+0.4*Math.random());
+}
 /* defence lines: a unit told to dig in (and Black's idle line troops) builds a trench across the front where it stands.
    A work is a straight trench {s side, x,y centre, dx,dy direction along the front, len half-length, q quality 0..1}. */
 const WORK={reach:2.2,maxLen:6,grow:0.4,build:0.045};
@@ -832,7 +907,7 @@ function dig(dt){
   const plans=new Map();for(const w of G.works)if(w.by){if(!plans.has(w.by))plans.set(w.by,[]);plans.get(w.by).push(w);}
   for(const u of G.units){
     const k=u.side===RED?(u.dig?1:0):(u.role==="line"||u.garrison?D_().dig:0);
-    if(!k||u.path)continue;
+    if(!k||u.path||u.sea)continue;
     const mine=plans.get(u.id);
     if(mine){ // a drawn line: work on the whole stretch, slower the longer it is
       let tot=0,cx_=0,cy_=0;for(const w of mine){tot+=2*w.len;cx_+=w.x;cy_+=w.y;}cx_/=mine.length;cy_/=mine.length;
@@ -855,6 +930,7 @@ function dig(dt){
 function claim(){
   const st=++G.stamp,touched=[];
   for(const u of G.units){
+    if(atSea(u))continue;
     const R=T[u.type].claim*K,arr=u.side===RED?G.claimR:G.claimB;
     const i0=Math.max(0,Math.floor((u.x-R)/CELL)),i1=Math.min(GW-1,Math.floor((u.x+R)/CELL));
     const j0=Math.max(0,Math.floor((u.y-R)/CELL)),j1=Math.min(GH-1,Math.floor((u.y+R)/CELL));
@@ -986,6 +1062,7 @@ function aiArmor(){
   const n=D_().strikes;let k=0;for(const p of prey.slice(0,n)){for(const a of free.slice(k,k+2)){a.tgt=p.id;setOrder(a,p.seenX,p.seenY);}k+=2;if(k>=free.length)break;}
 }
 function aiSpendReserves(initial){
+  if(!initial&&G.aiSeaWait)return;
   const F=frontCells(BLK);if(!F.length)return;
   const nDep=G.depots.filter(d=>d.s===BLK).length;
   if(!initial&&nDep<3&&G.res[BLK]<DEPOT.cost)return; // save up to replace a lost depot
@@ -1104,7 +1181,7 @@ function saveGame(silent){
     hq:M.hq.map(t=>t&&{name:t.name,x:t.x,y:t.y,c:t.c,synthetic:!!t.synthetic}),
     g:{t:G.t,phase:G.phase,owner:b64(G.owner),res:G.res,inc:G.inc,hold:G.hold,speed:G.speed,nid:G.nid,src:G.src,
        ter:b64(Uint8Array.from(G.ter,v=>Math.round(v*255))),air:G.air.map(a=>({...a})),
-       units:G.units.map(u=>({id:u.id,side:u.side,type:u.type,x:u.x,y:u.y,str:u.str,tx:u.tx,ty:u.ty,path:u.path,ent:u.ent,rest:u.rest,tgt:u.tgt,garrison:!!u.garrison,dig:!!u.dig,ammo:u.ammo,fat:u.fat,relieve:u.relieve})),works:G.works,cas:G.cas,depots:G.depots,roads:G.roads,diff:DIFF}};
+       units:G.units.map(u=>({id:u.id,side:u.side,type:u.type,x:u.x,y:u.y,str:u.str,tx:u.tx,ty:u.ty,path:u.path,ent:u.ent,rest:u.rest,tgt:u.tgt,garrison:!!u.garrison,dig:!!u.dig,ammo:u.ammo,fat:u.fat,relieve:u.relieve,sea:u.sea||null})),works:G.works,cas:G.cas,depots:G.depots,roads:G.roads,diff:DIFF}};
   try{localStorage.setItem(SAVE_KEY,JSON.stringify(snap));if(!silent)toast("Battle saved in this browser");refreshContinue();return true;}
   catch(e){if(!silent)toast("This browser would not store the save");return false;}
 }
@@ -1129,7 +1206,7 @@ async function loadGame(){
     for(const u of g.units)G.units.push(Object.assign({sup:true,eng:0,hit:0,foes:[],ammo:100,fat:0,relieve:0},u));
     M.road0=M.road.slice();M.rail0=M.rail.slice();for(const r of G.roads)if(r.done>=r.len)rasterRoad(r);
     if(!g.depots)seedDepots(); // saves from before depots existed
-    APP="game";resetCam();FIELD=field();buildCosts();computeSupply();spot();updateVP();showScreen();
+    APP="game";resetCam();FIELD=field();buildCosts();computeSupply();waterPrep();spot();updateVP();showScreen();
     if(G.phase==="setup")showBrief("Deployment",null);else toast("Battle loaded and paused. Press 1× to resume.");
     syncUI();
   }catch(e){console.error(e);toast("That save could not be loaded");}
@@ -1350,6 +1427,11 @@ function drawBattle(now){
       halo(ctx,s===RED?"RED · YOU":"BLACK · AI",sx(mx/n),sy(mY/n),s===RED?"#C9252C":"#1C1E1A");ctx.textAlign="left";}
     scaleBar();return;
   }
+  // ports and sea routes
+  if(M.wcomp){ctx.font=`600 12px ${FONT_BODY}`;ctx.textAlign="center";for(const t of M.towns){if(!t.port)continue;const x=sx(t.x),y=sy(t.y);if(x<-20||y<-20||x>VW+20||y>VH+20)continue;halo(ctx,"⚓",x,y-12,"#2E6EA0");}ctx.textAlign="left";}
+  ctx.setLineDash([3,5]);ctx.strokeStyle="rgba(46,110,160,.7)";ctx.lineWidth=1.6;
+  for(const u of G.units){if(u.side!==RED||!u.sea)continue;const S=u.sea;ctx.beginPath();ctx.moveTo(sx(u.x),sy(u.y));if(S.stage==="toPort")ctx.lineTo(sx(S.px),sy(S.py));for(let k=S.stage==="sail"?S.k:0;k<S.route.length;k++)ctx.lineTo(sx(S.route[k][0]),sy(S.route[k][1]));ctx.stroke();}
+  ctx.setLineDash([]);
   // move orders
   ctx.setLineDash([5,4]);
   for(const u of G.units){if(u.side!==RED||!u.path)continue;const s=G.sel.has(u.id);
@@ -1376,6 +1458,7 @@ function drawBattle(now){
     const col=u.side===RED?"#C9252C":"#1C1E1A";
     if(G.sel.has(u.id)){ctx.fillStyle="rgba(226,177,60,.4)";ctx.beginPath();ctx.arc(x,y,R+6,0,7);ctx.fill();}
     if(!u.sup){ctx.strokeStyle=`rgba(226,177,60,${0.5+0.5*Math.sin(now/150)})`;ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(x,y,R+4,0,7);ctx.stroke();ctx.setLineDash([]);}
+    if(atSea(u)){ctx.fillStyle="#6B4A2B";ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(x-R*1.7,y+R*0.5);ctx.lineTo(x+R*1.7,y+R*0.5);ctx.lineTo(x+R*1.2,y+R*1.25);ctx.lineTo(x-R*1.2,y+R*1.25);ctx.closePath();ctx.fill();ctx.stroke();}
     const flash=u.hit>0&&Math.floor(now/90)%2,ext=u.type==="arm"?R*1.3:R;
     unitPath(ctx,u.type,x,y,R);ctx.fillStyle=u.side===RED?"#E8B4AE":"#A3A699";ctx.fill();
     ctx.save();ctx.clip();const f=Math.max(0,Math.min(1,u.str/100));ctx.fillStyle=flash?"#E2B13C":col;ctx.fillRect(x-2*R,y+ext-2*ext*f,4*R,2*ext*f+1);ctx.restore();
@@ -1405,6 +1488,7 @@ function drawBattle(now){
     gest.pts.forEach((p,k)=>k?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.stroke();ctx.globalAlpha=1;}
   if(G.placing&&T[G.placing]&&G.phase==="battle"){ctx.strokeStyle="rgba(201,37,44,.8)";ctx.lineWidth=2;ctx.setLineDash([5,4]);
     for(const t of railheads(RED)){ctx.beginPath();ctx.arc(sx(t.x),sy(t.y),RAIL*K*cam.s,0,7);ctx.stroke();}ctx.setLineDash([]);}
+  if(tool==="ship"&&M.wcomp){ctx.strokeStyle="rgba(46,110,160,.9)";ctx.lineWidth=2;ctx.setLineDash([5,4]);for(const t of ports(RED)){ctx.beginPath();ctx.arc(sx(t.x),sy(t.y),SEA.portR*K*cam.s,0,7);ctx.stroke();}ctx.setLineDash([]);}
   if(G.placing==='recon'&&hover){ctx.strokeStyle='#C9252C';ctx.lineWidth=1.5;ctx.setLineDash([3,4]);ctx.beginPath();ctx.arc(sx(hover[0]),sy(hover[1]),INTEL.plane.r*K*cam.s,0,7);ctx.stroke();ctx.setLineDash([]);}
   else if(G.placing&&hover){const ok=placeOK(hover[0],hover[1]);ctx.strokeStyle=ok?"#C9252C":"#7A7D72";ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(sx(hover[0]),sy(hover[1]),R,0,7);ctx.stroke();ctx.setLineDash([]);}
   scaleBar();
@@ -1436,7 +1520,7 @@ cv.addEventListener("pointerdown",e=>{
   if((tool==="road"||tool==="rail")&&G.phase!=="over"){gest={type:"road",rail:tool==="rail",pts:[[wx(px),wy(py)]],px,py,moved:false};return;}
   const lineMode=e.button===2||tool==="line"||tool==="dig"||e.ctrlKey;
   if(lineMode&&G.sel.size&&G.phase!=="over"){gest={type:"line",fort:tool==="dig",pts:[[wx(px),wy(py)]],px,py,moved:false};return;}
-  if(G.placing||G.airMode){gest={type:"pan",lx:px,ly:py,px,py,moved:false};return;}
+  if(G.placing||G.airMode||tool==="ship"){gest={type:"pan",ship:tool==="ship",lx:px,ly:py,px,py,moved:false};return;}
   const u=G.phase!=="over"&&hitUnit(px,py);
   if(u){const was=G.sel.has(u.id);if(!was){if(!e.shiftKey)G.sel.clear();G.sel.add(u.id);}gest={type:"drag",unit:u,px,py,sx:px,sy:py,moved:false,was,shift:e.shiftKey,pts:[[u.x,u.y]]};syncUI();return;}
   if(e.shiftKey||tool==="box"||(e.pointerType==="mouse"&&e.button===0)){gest={type:"box",ax:px,ay:py,bx:px,by:py,add:e.shiftKey};return;}
@@ -1482,7 +1566,8 @@ function endPtr(e){
     if(tool==="line")setTool("move");
   }else if(g.type==="road"){setTool("move");if(g.moved)buildRoad(g.pts,g.rail);
   }else if(g.type==="pan"&&!g.moved){
-    if(G.placing)tryPlace(wx(px),wy(py));else if(G.sel.size&&G.phase!=="over")orderGroup(null,wx(px),wy(py));
+    if(g.ship){if(G.phase!=="battle")toast("Ships sail once the battle has started");else shipOrder(selected(),wx(px),wy(py),RED);setTool("move");}
+    else if(G.placing)tryPlace(wx(px),wy(py));else if(G.sel.size&&G.phase!=="over")orderGroup(null,wx(px),wy(py));
   }
   syncUI();
 }
@@ -1510,7 +1595,7 @@ $("bSwap").onclick=()=>{SWAP=!SWAP;recomputeOwner();};
 $("bStraight").onclick=()=>{FRONT=[[M.w/2,0],[M.w/2,M.h]];recomputeOwner();};
 $("bBack").onclick=()=>toPicker();
 $("bDeploy").onclick=()=>{APP="game";newBattle();showScreen();territoryFrom(G.owner);showBrief("Deployment",null);syncUI();};
-function setTool(t){tool=t;if(G)G.placing=null;for(const [id,v] of [["tMove","move"],["tBox","box"],["tLine","line"],["bDig","dig"],["tRoad","road"],["tRail","rail"]])$(id).setAttribute("aria-pressed",String(t===v));syncUI();}
+function setTool(t){tool=t;if(G)G.placing=null;for(const [id,v] of [["tMove","move"],["tBox","box"],["tLine","line"],["bDig","dig"],["tRoad","road"],["tRail","rail"],["tShip","ship"]])$(id).setAttribute("aria-pressed",String(t===v));syncUI();}
 function setSpeed(s){G.speed=s;G.paused=false;syncUI();}
 $("tMove").onclick=()=>setTool("move");$("tBox").onclick=()=>setTool("box");$("tLine").onclick=()=>{setTool("line");toast(G.sel.size?"Now draw the front line you want them to hold":"Select units first, then draw their line");};
 $("bPause").onclick=()=>{G.paused=!G.paused;syncUI();};
@@ -1531,6 +1616,7 @@ $("bInf").onclick=()=>{G.airMode=null;G.placing=G.placing==="inf"?null:"inf";if(
 $("bArm").onclick=()=>{G.placing=G.placing==="arm"?null:"arm";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place cavalry");syncUI();};
 $("bRecon").onclick=()=>{G.placing=G.placing==="recon"?null:"recon";if(G.placing)toast("Tap where the recon plane should fly");syncUI();};
 $("bDepot").onclick=()=>{G.placing=G.placing==="depot"?null:"depot";if(G.placing)toast("Tap your own ground to build a depot, ideally on a road");syncUI();};
+$("tShip").onclick=()=>{if(tool==="ship"){setTool("move");return;}if(!G.sel.size){toast("Select the troops to ship first");return;}setTool("ship");toast("Tap the shore where they should land (ports you can sail from are circled blue)");};
 $("tRail").onclick=()=>{setTool(tool==="rail"?"move":"rail");if(tool==="rail")toast("Draw the railway, starting on your own ground");};
 $("tRoad").onclick=()=>{setTool(tool==="road"?"move":"road");if(tool==="road")toast("Draw the road, starting on your own ground");};
 $("bArt").onclick=()=>{G.placing=G.placing==="art"?null:"art";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place artillery");syncUI();};
