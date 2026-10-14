@@ -146,7 +146,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
     </div>
     <div id="menu" hidden>
       <div id="mapname"></div>
-      <div class="row"><button id="bSave" title="Save this battle in this browser">Save</button><button id="bMaps" title="Save and choose another map">Maps</button><button id="helpbtn" title="How to play">Help</button></div>
+      <div class="row"><button id="bSave" title="Save this battle in this browser">Save</button><button id="bMaps" title="Save and choose another map">Maps</button><button id="helpbtn" title="How to play">Help</button><button id="bFog" aria-pressed="true" title="Fog of war: you only see enemies your troops or planes can see">Fog</button></div>
     </div>
   </header>
   <aside class="plate" id="score" hidden title="Towns held: they feed your reserves">
@@ -176,6 +176,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <button id="bArm" title="Place a cavalry division (2 reserves)">+Cav</button>
       <button id="bArt" title="Place an artillery battery (2 reserves)">+Art</button>
       <button id="bDepot" title="Build an ammunition depot (2 reserves): fast resupply within 16 km, full rate only on a road">+Depot</button>
+      <button id="bRecon" title="Recon plane (1 reserve): tap where to fly; it reports every enemy it passes over, then flies home">Recon</button>
     </div>
 </nav>
   <section class="plate" id="brief" role="dialog" aria-labelledby="briefTitle" hidden>
@@ -186,6 +187,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Moving troops:</b> select units (tap one, <b>Box</b> to drag a box round several, or <b>All</b>). Then either drag any selected unit to where it should go (the group keeps its formation), tap the map to send the group there, or press <b>Line</b> and draw a front: each unit takes the nearest spot on it. A cross marks each selected unit's destination.</li>
       <li><b>Defence lines:</b> select units, press <b>Dig</b> (<kbd>D</kbd>) and draw a line on the map: the selected units spread out along it and dig a trench that follows your line. Or tap a spot instead: they march there and dig in on arrival. Press <b>Dig</b> twice to dig in right where they stand. Trenches grow while the unit is still and out of combat (about half a minute for infantry; cavalry and artillery dig slowly). Troops in their own trenches take up to 45% less damage, and enemies crossing them are slowed. Shelling and fighting wreck trenches, and captured ones are only half as good. The longer the stretch each unit has to dig, the slower it goes; planned trench shows as a dashed line until work starts. You can draw defence lines during deployment too.</li>
       <li><b>Ammunition and fatigue:</b> the bars under a selected unit show ammunition (yellow) and freshness (blue). Fighting burns ammunition, which is restocked from depots (see Supply); out of ammunition, troops fight at a third of their strength and guns fall silent. Marching, fighting and digging tire troops, and tired troops move slower, hit softer and take more losses. They recover by resting, fastest well behind the line.</li>
+      <li><b>Fog of war:</b> you only see enemies within sight of your troops, depots and HQ (cavalry sees furthest). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly) to scout behind the lines; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
       <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (crates) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
@@ -496,16 +498,18 @@ const T={
 };
 const HQ_HOLD=25,ENGAGE=6.5,CONTACT=3.4,DMG=1.5,MAXUNITS=60;
 // how sharp Black plays: how often it rethinks, how hard it hits, how fast it earns reserves
-const DIFFS={easy:{think:5,arm:14,air:10,fire:0.7,inc:0.5,rest:false,strikes:1,dig:0.35},normal:{think:2.2,arm:6,air:4,fire:1,inc:1,rest:true,strikes:2,dig:0.6},hard:{think:1.5,arm:4,air:3,fire:1.1,inc:1.3,rest:true,strikes:3,dig:0.9}};
+const DIFFS={easy:{think:5,arm:14,air:10,fire:0.7,inc:0.5,rest:false,strikes:1,dig:0.35,recon:70},normal:{think:2.2,arm:6,air:4,fire:1,inc:1,rest:true,strikes:2,dig:0.6,recon:45},hard:{think:1.5,arm:4,air:3,fire:1.1,inc:1.3,rest:true,strikes:3,dig:0.9,recon:28}};
 let DIFF=(()=>{try{return localStorage.getItem("front1914.diff")||"easy";}catch(e){return "easy";}})();if(!DIFFS[DIFF])DIFF="easy";
 const D_=()=>DIFFS[DIFF];
+let FOG=(()=>{try{return localStorage.getItem("front1914.fog")!=="0";}catch(e){return true;}})();
+const shown=u=>u.side===RED||!FOG||seen(u,0.6); // enemy unit visible to the player right now
 let G=null,FIELD=null;
 
 function newBattle(){
   G={t:0,phase:"setup",owner:Int8Array.from(OWN0),units:[],nid:1,res:[4,4],inc:[0,0],speed:1,paused:false,sel:new Set(),
      fx:[],winner:null,ai:0,aiArm:0,supT:0,ownerDirty:true,sup:[new Uint8Array(NC),new Uint8Array(NC)],stamp:0,
      claimR:new Int32Array(NC),claimB:new Int32Array(NC),vp:[0,0],placing:null,hold:[0,0],src:[[],[]],saveT:0,
-     ter:new Float32Array(NC),terDirty:true,air:[],airMode:null,aiAir:0,works:[],cas:{dead:[0,0],wnd:[0,0]},depots:[],roads:[]};
+     ter:new Float32Array(NC),terDirty:true,air:[],airMode:null,aiAir:0,works:[],cas:{dead:[0,0],wnd:[0,0]},depots:[],roads:[],planes:[],vis:[new Uint8Array(NC),new Uint8Array(NC)],aiRecon:20};
   for(let c=0;c<NC;c++){if(M.water[c])continue;const i=c%GW,j=Math.floor(c/GW);if(i===0||j===0||i===GW-1||j===GH-1)G.src[G.owner[c]].push(c);}
   FIELD=field();
   const P=extendToEdges(FRONT),seg=[0];for(let k=1;k<P.length;k++)seg.push(seg[k-1]+Math.hypot(P[k][0]-P[k-1][0],P[k][1]-P[k-1][1]));
@@ -519,7 +523,7 @@ function newBattle(){
   const h=M.hq[BLK];if(h){for(const d of [-3,3]){const q=nearestCell(h.x+d*K,h.y,c=>!M.water[c]&&G.owner[c]===BLK);if(q)addUnit(BLK,"inf",q[0],q[1]).garrison=true;}}
   if(!M.road0)M.road0=M.road.slice();else M.road.set(M.road0); // field roads from the last battle are gone
   seedDepots();
-  buildCosts();computeSupply();updateVP();aiSpendReserves(true);
+  buildCosts();computeSupply();updateVP();aiSpendReserves(true);spot();
 }
 function scar(x,y,r,amt){ // churn the ground: craters, rubble, burnt fields
   const i0=Math.max(0,Math.floor((x-r)/CELL)),i1=Math.min(GW-1,Math.floor((x+r)/CELL)),j0=Math.max(0,Math.floor((y-r)/CELL)),j1=Math.min(GH-1,Math.floor((y+r)/CELL));
@@ -628,7 +632,7 @@ function step(dt){
     const d=dmg.get(u)||0;u.str-=d;if(d>0)u.hit=0.4;else u.hit=Math.max(0,u.hit-dt);
     if(!u.sup)u.str-=0.55*dt;else if(!u.eng)u.str=Math.min(100,u.str+(u.rest?2.2:1.1)*dt);
   }
-  bombard(dt);
+  flyRecon(dt);bombard(dt);
   if(!G.cas)G.cas={dead:[0,0],wnd:[0,0]};
   for(const u of U){const loss=s0.get(u.id)-Math.max(0,u.str);if(loss>0){G.cas.dead[u.side]+=loss*MEN*KILLED;G.cas.wnd[u.side]+=loss*MEN*(1-KILLED);}}
   for(const u of U)if(u.str<=0){G.fx.push({k:"die",x:u.x,y:u.y,t:0,side:u.side});G.sel.delete(u.id);}
@@ -658,7 +662,7 @@ function step(dt){
       if(!M.water[cellOf(ux,uy)]){u.x=ux;u.y=uy;}if(!M.water[cellOf(vx,vy)]){v.x=vx;v.y=vy;}}
   }
   claim();
-  G.supT+=dt;if(G.supT>=0.5){dig(G.supT);logistics(G.supT);stepDepots(G.supT);G.supT=0;computeSupply();updateVP();checkEnd();}
+  G.supT+=dt;if(G.supT>=0.5){dig(G.supT);logistics(G.supT);stepDepots(G.supT);G.supT=0;computeSupply();spot();updateVP();checkEnd();}
   G.costT=(G.costT||0)+dt;if(G.costT>5){G.costT=0;buildCosts();}
   for(const s of [RED,BLK]){G.inc[s]+=dt*(1/30+G.vpEff[s]/2500)*(s===BLK?D_().inc:1);while(G.inc[s]>=1){G.inc[s]-=1;G.res[s]=Math.min(9,G.res[s]+1);}}
   G.ai+=dt;if(G.ai>=D_().think){G.ai=0;aiThink();}
@@ -738,9 +742,9 @@ function bombard(dt){
     if(a.type!=="art"||a.path||a.eng||G.phase!=="battle"||a.ammo<SUP.shell)continue;
     a.rl=(a.rl==null?Math.random()*ARTY.reload:a.rl)-dt;if(a.rl>0)continue;
     let best=null,bs=-1e9; // prefer enemies fighting our troops, then the closest
-    for(const e of G.units){if(e.side===a.side)continue;const d=Math.hypot(e.x-a.x,e.y-a.y);if(d>ARTY.range*K)continue;
+    for(const e of G.units){if(e.side===a.side||!seen(e,0.6))continue;const d=Math.hypot(e.x-a.x,e.y-a.y);if(d>ARTY.range*K)continue;
       const sc=(e.eng?20:0)-d/K+(e.type==="art"?6:0);if(sc>bs){bs=sc;best=e;}}
-    for(const d of G.depots){if(d.s===a.side)continue;const dd=Math.hypot(d.x-a.x,d.y-a.y);if(dd>ARTY.range*K)continue;const sc=12-dd/K;if(sc>bs){bs=sc;best=d;}}
+    for(const d of G.depots){if(d.s===a.side||!d.known)continue;const dd=Math.hypot(d.x-a.x,d.y-a.y);if(dd>ARTY.range*K)continue;const sc=12-dd/K;if(sc>bs){bs=sc;best=d;}}
     if(!best){a.rl=1;continue;}
     a.rl=ARTY.reload*(0.85+0.3*Math.random());a.ammo-=SUP.shell;
     const ang=Math.random()*7,off=Math.random()*1.4*K,x=best.x+Math.cos(ang)*off,y=best.y+Math.sin(ang)*off,R=ARTY.blast*K;
@@ -750,6 +754,56 @@ function bombard(dt){
     for(const d of G.depots){if(d.s===a.side)continue;const dd=Math.hypot(d.x-x,d.y-y);if(dd<R)d.hp-=DEPOT.shell*pow*(1-0.5*dd/R);}
     scar(x,y,R,0.07);G.fx.push({k:"bomb",x,y,t:0});G.fx.push({k:"shot",x:a.x,y:a.y,t:0});
   }
+}
+/* fog of war: each side sees only what its troops, depots and HQ can see, plus what its recon planes fly over.
+   An enemy unit is "seen" while in sight; it is remembered at its last seen spot for INTEL.mem seconds (drawn as a faded ghost).
+   Guns only fire at enemies their side can see right now. Enemy depots and trenches stay on the map once spotted. */
+const INTEL={sight:{inf:9,arm:14,art:7},hq:9,depot:6,mem:45,plane:{cost:1,speed:22,r:13,max:2,risk:0.05}};
+const seen=(e,age)=>e.seenT!=null&&G.t-e.seenT<=age; // e is seen by the other side
+function markVis(v,x,y,r){const n=Math.ceil(r/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);
+  for(let j=Math.max(0,j0-n);j<=Math.min(GH-1,j0+n);j++)for(let i=Math.max(0,i0-n);i<=Math.min(GW-1,i0+n);i++)if(Math.hypot((i+.5)*CELL-x,(j+.5)*CELL-y)<r)v[j*GW+i]=1;}
+function spot(){
+  if(!G.vis||G.vis[0].length!==NC)G.vis=[new Uint8Array(NC),new Uint8Array(NC)];
+  for(const s of [RED,BLK]){const v=G.vis[s];v.fill(0);
+    for(const u of G.units)if(u.side===s)markVis(v,u.x,u.y,INTEL.sight[u.type]*K*(0.6+0.4*u.str/100));
+    for(const d of G.depots)if(d.s===s)markVis(v,d.x,d.y,INTEL.depot*K);
+    const h=M.hq[s];if(h&&G.owner[h.c]===s)markVis(v,h.x,h.y,INTEL.hq*K);
+    for(const p of G.planes)if(p.s===s)markVis(v,p.x,p.y,INTEL.plane.r*K);}
+  reveal();G.fogDirty=true;
+}
+function reveal(){ // copy what each side can see onto the enemy's units, depots and trenches
+  for(const u of G.units){const v=G.vis[1-u.side];if(v[cellOf(u.x,u.y)]||u.eng){u.seenT=G.t;u.seenX=u.x;u.seenY=u.y;u.seenS=u.str;}}
+  for(const d of G.depots)if(!d.known&&G.vis[1-d.s][cellOf(d.x,d.y)])d.known=true;
+  for(const w of G.works)if(!w.known&&G.vis[1-w.s][cellOf(w.x,w.y)])w.known=true;
+}
+function launchRecon(s,x,y){
+  if(G.planes.filter(p=>p.s===s).length>=INTEL.plane.max){if(s===RED)toast("Both recon planes are already up");return false;}
+  if(G.res[s]<INTEL.plane.cost){if(s===RED)toast("Not enough reserves");return false;}
+  const h=M.hq[s]&&G.owner[M.hq[s].c]===s?M.hq[s]:null;let o=h?[h.x,h.y]:null;
+  if(!o){const d=G.depots.find(d=>d.s===s);o=d?[d.x,d.y]:null;}if(!o){const u=G.units.find(u=>u.side===s);if(!u)return false;o=[u.x,u.y];}
+  G.res[s]-=INTEL.plane.cost;G.planes.push({s,x:o[0],y:o[1],ox:o[0],oy:o[1],tx:clampX(x),ty:clampY(y),leg:0,loiter:2.5});
+  if(s===RED)toast("Recon plane on its way: it reports every unit it flies over");return true;
+}
+function flyRecon(dt){
+  if(!G.planes)G.planes=[];
+  for(const p of G.planes){
+    const [gx,gy]=p.leg===0?[p.tx,p.ty]:[p.ox,p.oy],dx=gx-p.x,dy=gy-p.y,d=Math.hypot(dx,dy),st=INTEL.plane.speed*K*dt;
+    if(p.leg===0&&d<st){p.x=gx;p.y=gy;p.loiter-=dt;if(p.loiter<=0)p.leg=1;}
+    else if(p.leg===1&&d<st){p.done=true;}
+    else{p.x+=dx/d*st;p.y+=dy/d*st;p.a=Math.atan2(dy,dx);}
+    if(p.leg===1&&p.loiter>-1)p.loiter=-1;
+    // seen from the plane: units underneath are reported straight away
+    const R=INTEL.plane.r*K;for(const u of G.units)if(u.side!==p.s&&Math.abs(u.x-p.x)<R&&Math.abs(u.y-p.y)<R&&Math.hypot(u.x-p.x,u.y-p.y)<R){u.seenT=G.t;u.seenX=u.x;u.seenY=u.y;u.seenS=u.str;}
+    for(const d of G.depots)if(d.s!==p.s&&Math.hypot(d.x-p.x,d.y-p.y)<R)d.known=true;
+    for(const w of G.works)if(w.s!==p.s&&Math.hypot(w.x-p.x,w.y-p.y)<R)w.known=true;
+    // ground fire over enemy guns can bring it down
+    if(G.owner[cellOf(p.x,p.y)]!==p.s&&G.units.some(u=>u.side!==p.s&&u.type==="art"&&Math.hypot(u.x-p.x,u.y-p.y)<5*K)&&Math.random()<INTEL.plane.risk*dt){
+      p.done=true;G.fx.push({k:"down",x:p.x,y:p.y,t:0});if(p.s===RED)toast("A recon plane was shot down");}
+  }
+  G.planes=G.planes.filter(p=>!p.done);
+  if(G.phase!=="battle")return;
+  G.aiRecon-=dt;if(G.aiRecon<=0&&G.res[BLK]>=1){G.aiRecon=D_().recon*(0.8+0.4*Math.random());
+    const F=frontCells(RED);if(F.length){FIELD=field();const c=F[Math.floor(Math.random()*F.length)],q=awayFromRed(c,-14*K);launchRecon(BLK,q[0],q[1]);}}
 }
 /* defence lines: a unit told to dig in (and Black's idle line troops) builds a trench across the front where it stands.
    A work is a straight trench {s side, x,y centre, dx,dy direction along the front, len half-length, q quality 0..1}. */
@@ -898,7 +952,7 @@ function aiThink(){
   const arts=mine.filter(u=>u.role==="art");
   if(F.length&&arts.length)arts.forEach((u,k)=>{const c=F[Math.floor((k+.5)*F.length/arts.length)],[x,y]=awayFromRed(c,8*K);if(Math.hypot(u.x-x,u.y-y)>3*K)aiOrder(u,x,y);});
   if(!F.length||!line.length)return;
-  const reds=G.units.filter(u=>u.side===RED);
+  const reds=G.units.filter(u=>u.side===RED&&seen(u,INTEL.mem));
   const pts=[];for(let k=0;k<line.length;k++){const c=F[Math.floor((k+.5)*F.length/line.length)];
     const open=!reds.some(r=>Math.hypot(r.x-cx(c),r.y-cy(c))<16*K);pts.push(awayFromRed(c,(open?-7:2.5)*K));}
   // assign along the front's direction so lines do not cross
@@ -910,13 +964,13 @@ function aiThink(){
 function aiArmor(){
   if(G.phase!=="battle")return;
   const arm=G.units.filter(u=>u.side===BLK&&u.role==="strike");if(!arm.length)return;
-  const reds=G.units.filter(u=>u.side===RED),byId=new Map(G.units.map(u=>[u.id,u])),free=[];
-  for(const a of arm){const t=byId.get(a.tgt);if(t&&t.side===RED&&Math.hypot(t.x-a.x,t.y-a.y)<90*K)aiOrder(a,t.x,t.y);else{a.tgt=0;free.push(a);}}
+  const reds=G.units.filter(u=>u.side===RED&&seen(u,INTEL.mem)),byId=new Map(G.units.map(u=>[u.id,u])),free=[];
+  for(const a of arm){const t=byId.get(a.tgt);if(t&&t.side===RED&&seen(t,INTEL.mem)&&Math.hypot(t.seenX-a.x,t.seenY-a.y)<90*K)aiOrder(a,t.seenX,t.seenY);else{a.tgt=0;free.push(a);}}
   if(!free.length||!reds.length)return;
   const hq=M.hq[BLK];
   const score=r=>(r.str*(r.sup?1:0.5))-(G.owner[cellOf(r.x,r.y)]===BLK?25:0)-(hq?Math.max(0,60*K-Math.hypot(r.x-hq.x,r.y-hq.y))*2/K:0)+Math.random()*15;
   const prey=reds.slice().sort((a,b)=>score(a)-score(b));
-  const n=D_().strikes;let k=0;for(const p of prey.slice(0,n)){for(const a of free.slice(k,k+2)){a.tgt=p.id;setOrder(a,p.x,p.y);}k+=2;if(k>=free.length)break;}
+  const n=D_().strikes;let k=0;for(const p of prey.slice(0,n)){for(const a of free.slice(k,k+2)){a.tgt=p.id;setOrder(a,p.seenX,p.seenY);}k+=2;if(k>=free.length)break;}
 }
 function aiSpendReserves(initial){
   const F=frontCells(BLK);if(!F.length)return;
@@ -1008,6 +1062,7 @@ function orderLine(pts,fortify){
 function placeOK(x,y){const c=cellOf(x,y);return !M.water[c]&&G.owner[c]===RED&&G.sup[RED][c]===1&&(G.phase!=="setup"||setupSafe(x,y))&&!G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<10*K);}
 function tryPlace(x,y){
   if(G.placing==="depot"){placeDepot(x,y);return;}
+  if(G.placing==="recon"){if(launchRecon(RED,x,y))G.placing=null;syncUI();return;}
   const type=G.placing,cost=T[type].cost;
   if(G.res[RED]<cost){toast("Not enough reserves");return;}
   if(own().length>=MAXUNITS){toast("Division cap reached");return;}
@@ -1050,12 +1105,12 @@ async function loadGame(){
     G={t:g.t,phase:g.phase,owner:unb64(g.owner),units:[],nid:g.nid,res:g.res,inc:g.inc,speed:g.speed,paused:true,sel:new Set(),
        fx:[],winner:null,ai:0,aiArm:0,supT:0,ownerDirty:true,sup:[new Uint8Array(NC),new Uint8Array(NC)],stamp:0,
        claimR:new Int32Array(NC),claimB:new Int32Array(NC),vp:[0,0],placing:null,hold:g.hold,src:g.src,saveT:0,
-       ter:new Float32Array(NC),terDirty:true,air:g.air||[],airMode:null,aiAir:0,works:g.works||[],cas:g.cas||{dead:[0,0],wnd:[0,0]},depots:g.depots||[],roads:g.roads||[]};
+       ter:new Float32Array(NC),terDirty:true,air:g.air||[],airMode:null,aiAir:0,works:g.works||[],cas:g.cas||{dead:[0,0],wnd:[0,0]},depots:g.depots||[],roads:g.roads||[],planes:[],vis:[new Uint8Array(NC),new Uint8Array(NC)],aiRecon:20};
     if(g.ter){const q=new Uint8Array(unb64(g.ter).buffer);for(let c=0;c<NC&&c<q.length;c++)G.ter[c]=q[c]/255;}
     for(const u of g.units)G.units.push(Object.assign({sup:true,eng:0,hit:0,foes:[],ammo:100,fat:0,relieve:0},u));
     M.road0=M.road.slice();for(const r of G.roads)if(r.done>=r.len)rasterRoad(r);
     if(!g.depots)seedDepots(); // saves from before depots existed
-    APP="game";resetCam();FIELD=field();buildCosts();computeSupply();updateVP();showScreen();
+    APP="game";resetCam();FIELD=field();buildCosts();computeSupply();spot();updateVP();showScreen();
     if(G.phase==="setup")showBrief("Deployment",null);else toast("Battle loaded and paused. Press 1× to resume.");
     syncUI();
   }catch(e){console.error(e);toast("That save could not be loaded");}
@@ -1071,6 +1126,7 @@ function drawWorks(){
   for(const w of G.works){
     const L=w.len*s,x=sx(w.x),y=sy(w.y),tx=w.dx,ty=w.dy,nx=-ty,ny=tx;
     if(x<-L-20||y<-L-20||x>VW+L+20||y>VH+L+20)continue;
+    if(FOG&&w.s!==RED&&!w.known)continue;
     if(w.plan){ctx.strokeStyle=w.s===RED?"rgba(120,24,20,.75)":"rgba(24,26,22,.6)";ctx.lineWidth=2;ctx.setLineDash([5,4]);
       ctx.beginPath();ctx.moveTo(x-tx*L,y-ty*L);ctx.lineTo(x+tx*L,y+ty*L);ctx.stroke();ctx.setLineDash([]);continue;}
     // earth parapet
@@ -1092,7 +1148,7 @@ function drawRoadsDepots(){
     if(cut){ctx.setLineDash([4,5]);ctx.strokeStyle="rgba(138,106,58,.65)";ctx.beginPath();ctx.moveTo(sx(cut[0]),sy(cut[1]));for(;k<r.pts.length;k++)ctx.lineTo(sx(r.pts[k][0]),sy(r.pts[k][1]));ctx.stroke();ctx.setLineDash([]);}
     ctx.lineCap="butt";}
   const z=Math.max(7,1.4*K*s);
-  for(const d of G.depots){const x=sx(d.x),y=sy(d.y);if(x<-200||y<-200||x>VW+200||y>VH+200)continue;
+  for(const d of G.depots){const x=sx(d.x),y=sy(d.y);if(x<-200||y<-200||x>VW+200||y>VH+200)continue;if(FOG&&d.s!==RED&&!d.known)continue;
     if(d.s===RED){ctx.strokeStyle="rgba(201,37,44,.22)";ctx.lineWidth=1;ctx.setLineDash([3,6]);ctx.beginPath();ctx.arc(x,y,DEPOT.r*K*s,0,7);ctx.stroke();ctx.setLineDash([]);}
     ctx.fillStyle=d.s===RED?"#9E3A2E":"#3A3C36";ctx.fillRect(x-z,y-z*0.75,2*z,1.5*z);ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.2;ctx.strokeRect(x-z,y-z*0.75,2*z,1.5*z);
     ctx.beginPath();ctx.moveTo(x-z,y-z*0.75);ctx.lineTo(x+z,y+z*0.75);ctx.moveTo(x+z,y-z*0.75);ctx.lineTo(x-z,y+z*0.75);ctx.stroke();
@@ -1199,6 +1255,21 @@ function halo(c,s,x,y,col){c.lineWidth=3;c.strokeStyle="rgba(230,233,221,.9)";c.
 function star(x,y,ro,ri){for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,r=k%2?ri:ro;k?ctx.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r):ctx.moveTo(x+Math.cos(a)*r,y+Math.sin(a)*r);}ctx.closePath();}
 function arrow(x0,y0,x1,y1){const a=Math.atan2(y1-y0,x1-x0),h=10;ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.lineTo(x1-h*Math.cos(a-.45),y1-h*Math.sin(a-.45));ctx.moveTo(x1,y1);ctx.lineTo(x1-h*Math.cos(a+.45),y1-h*Math.sin(a+.45));ctx.stroke();}
 
+let fogCv=null,fctx=null,fimg=null;
+function drawFog(){
+  if(!FOG||!G.vis)return;
+  if(!fogCv||fogCv.width!==GW||fogCv.height!==GH){fogCv=document.createElement("canvas");fogCv.width=GW;fogCv.height=GH;fctx=fogCv.getContext("2d");fimg=fctx.createImageData(GW,GH);G.fogDirty=true;}
+  if(G.fogDirty){G.fogDirty=false;const v=G.vis[RED],d=fimg.data;for(let c=0;c<NC;c++){const o=c*4;d[o]=58;d[o+1]=60;d[o+2]=52;d[o+3]=v[c]?0:88;}fctx.putImageData(fimg,0,0);}
+  ctx.imageSmoothingEnabled=true;ctx.drawImage(fogCv,sx(0),sy(0),GW*CELL*cam.s,GH*CELL*cam.s);
+}
+function drawPlanes(){
+  for(const p of G.planes||[]){if(FOG&&p.s!==RED&&!G.vis[RED][cellOf(p.x,p.y)])continue;
+    const x=sx(p.x),y=sy(p.y),a=p.a||0,z=9;ctx.save();ctx.translate(x,y);ctx.rotate(a);
+    ctx.fillStyle=p.s===RED?"#C9252C":"#1C1E1A";ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.2;ctx.beginPath();
+    ctx.moveTo(z,0);ctx.lineTo(-z*0.8,0);ctx.moveTo(z*0.2,-z);ctx.lineTo(z*0.2,z);ctx.moveTo(-z*0.7,-z*0.4);ctx.lineTo(-z*0.7,z*0.4);
+    ctx.lineWidth=4;ctx.strokeStyle="#E6E9DD";ctx.stroke();ctx.lineWidth=2.2;ctx.strokeStyle=p.s===RED?"#C9252C":"#1C1E1A";ctx.stroke();ctx.restore();
+    if(p.s===RED){ctx.strokeStyle="rgba(201,37,44,.3)";ctx.lineWidth=1;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(x,y,INTEL.plane.r*K*cam.s,0,7);ctx.stroke();ctx.setLineDash([]);}}
+}
 function drawBattle(now){
   const own=G?G.owner:OWN0;
   if(!terrCv||terrFor!==M)territoryFrom(own);
@@ -1208,7 +1279,7 @@ function drawBattle(now){
   ctx.imageSmoothingEnabled=true;ctx.drawImage(terrCv,sx(0),sy(0),GW*CELL*cam.s,GH*CELL*cam.s);
   ctx.lineCap="round";ctx.lineJoin="round";
   const lw=Math.max(2,Math.min(4.5,2*Math.sqrt(cam.s/cam.fit)));
-  drawScars(now);drawWorks();drawRoadsDepots();
+  drawScars(now);drawWorks();drawRoadsDepots();if(G&&APP==='game')drawFog();
   strokeSegs(lines.b,"#1C1E1A",lw);strokeSegs(lines.r,"#C9252C",lw);
   // towns
   const z=cam.s/cam.fit;ctx.textBaseline="middle";const taken=[];
@@ -1251,6 +1322,11 @@ function drawBattle(now){
     else{ctx.strokeStyle=f.side===RED?`rgba(201,37,44,${1-f.t/1.2})`:`rgba(28,30,26,${1-f.t/1.2})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,6+f.t*30,0,7);ctx.stroke();}}
   const R=unitR();
   for(const u of G.units){
+    if(!shown(u)){if(!seen(u,INTEL.mem))continue;const x=sx(u.seenX),y=sy(u.seenY),a=1-(G.t-u.seenT)/INTEL.mem;
+      ctx.strokeStyle=`rgba(28,30,26,${0.25+0.45*a})`;ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(x,y,R*0.85,0,7);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=`rgba(28,30,26,${0.15+0.25*a})`;ctx.fill();
+      if(u.type==="arm"){ctx.beginPath();ctx.moveTo(x-R*0.36,y+R*0.36);ctx.lineTo(x+R*0.36,y-R*0.36);ctx.stroke();}
+      if(u.type==="art"){ctx.beginPath();ctx.arc(x,y,Math.max(1.5,R*0.2),0,7);ctx.stroke();}continue;}
     const x=sx(u.x),y=sy(u.y);if(x<-30||y<-30||x>VW+30||y>VH+30)continue;
     const col=u.side===RED?"#C9252C":"#1C1E1A";
     if(G.sel.has(u.id)){ctx.fillStyle="rgba(226,177,60,.4)";ctx.beginPath();ctx.arc(x,y,R+6,0,7);ctx.fill();}
@@ -1268,6 +1344,7 @@ function drawBattle(now){
       ctx.fillStyle=u.fat>70?"#E2593C":"#9EC3DC";ctx.fillRect(bx,by+3,bw*(1-u.fat/100),2);}
     if(u.dig&&u.side===RED){ctx.strokeStyle="#6B4A2B";ctx.lineWidth=Math.max(2,R*0.35);ctx.beginPath();ctx.arc(x,y,R+3.5,Math.PI*0.15,Math.PI*0.85);ctx.stroke();}
   }
+  drawPlanes();
   if(gest&&gest.type==="drag"&&gest.moved){
     const lead=gest.unit;ctx.strokeStyle="#C9252C";ctx.lineWidth=2.5;
     const pts=gest.pts.concat([[wx(gest.sx),wy(gest.sy)]]),bent=isCurved(pts);
@@ -1281,7 +1358,8 @@ function drawBattle(now){
     gest.pts.forEach((p,k)=>k?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.stroke();ctx.setLineDash([]);}
   if(gest&&gest.type==="line"&&gest.pts.length>1){ctx.strokeStyle=gest.fort?"#6B4A2B":"#C9252C";ctx.lineWidth=4;ctx.globalAlpha=.75;ctx.beginPath();
     gest.pts.forEach((p,k)=>k?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.stroke();ctx.globalAlpha=1;}
-  if(G.placing&&hover){const ok=placeOK(hover[0],hover[1]);ctx.strokeStyle=ok?"#C9252C":"#7A7D72";ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(sx(hover[0]),sy(hover[1]),R,0,7);ctx.stroke();ctx.setLineDash([]);}
+  if(G.placing==='recon'&&hover){ctx.strokeStyle='#C9252C';ctx.lineWidth=1.5;ctx.setLineDash([3,4]);ctx.beginPath();ctx.arc(sx(hover[0]),sy(hover[1]),INTEL.plane.r*K*cam.s,0,7);ctx.stroke();ctx.setLineDash([]);}
+  else if(G.placing&&hover){const ok=placeOK(hover[0],hover[1]);ctx.strokeStyle=ok?"#C9252C":"#7A7D72";ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(sx(hover[0]),sy(hover[1]),R,0,7);ctx.stroke();ctx.setLineDash([]);}
   scaleBar();
 }
 function scaleBar(){
@@ -1404,10 +1482,13 @@ function digIn(){if(!G.sel.size){toast("Select units first, then Dig");return;}
 $("bDig").onclick=digIn;
 $("bInf").onclick=()=>{G.airMode=null;G.placing=G.placing==="inf"?null:"inf";if(G.placing)toast("Tap your own ground to place infantry");syncUI();};
 $("bArm").onclick=()=>{G.placing=G.placing==="arm"?null:"arm";if(G.placing)toast("Tap your own ground to place cavalry");syncUI();};
+$("bRecon").onclick=()=>{G.placing=G.placing==="recon"?null:"recon";if(G.placing)toast("Tap where the recon plane should fly");syncUI();};
 $("bDepot").onclick=()=>{G.placing=G.placing==="depot"?null:"depot";if(G.placing)toast("Tap your own ground to build a depot, ideally on a road");syncUI();};
 $("tRoad").onclick=()=>{setTool(tool==="road"?"move":"road");if(tool==="road")toast("Draw the road, starting on your own ground");};
 $("bArt").onclick=()=>{G.placing=G.placing==="art"?null:"art";if(G.placing)toast("Tap your own ground to place artillery");syncUI();};
 $("bSave").onclick=()=>saveGame(false);
+$("bFog").setAttribute("aria-pressed",String(FOG));
+$("bFog").onclick=()=>{FOG=!FOG;try{localStorage.setItem("front1914.fog",FOG?"1":"0");}catch(e){}$("bFog").setAttribute("aria-pressed",String(FOG));toast(FOG?"Fog of war on":"Fog of war off: every enemy is shown");};
 $("bMaps").onclick=()=>toPicker();
 $("bStart").onclick=()=>{if(G.phase==="setup"){G.phase="battle";G.placing=null;G.paused=false;$("brief").hidden=true;toast("Battle started");syncUI();}};
 $("bClose").onclick=()=>{$("brief").hidden=true;};
@@ -1444,7 +1525,7 @@ function syncUI(){
   for(const [id,s] of [["bS1",1],["bS2",2],["bS4",4]])$(id).setAttribute("aria-pressed",String(!G.paused&&G.speed===s));
   const sel=selected();
   const avg=f=>Math.round(sel.reduce((a,u)=>a+f(u),0)/Math.max(1,sel.length));
-  $("selinfo").textContent=sel.length?`${sel.length} sel · str ${avg(u=>u.str)}% · ammo ${avg(u=>u.ammo)}% · fresh ${100-avg(u=>u.fat)}%`:(G.placing?`placing ${(T[G.placing]?T[G.placing].label:"depot").toLowerCase()}`:"");
+  $("selinfo").textContent=sel.length?`${sel.length} sel · str ${avg(u=>u.str)}% · ammo ${avg(u=>u.ammo)}% · fresh ${100-avg(u=>u.fat)}%`:(G.placing?`placing ${(T[G.placing]?T[G.placing].label:G.placing==="recon"?"recon flight":"depot").toLowerCase()}`:"");
   $("bInf").setAttribute("aria-pressed",String(G.placing==="inf"));$("bArm").setAttribute("aria-pressed",String(G.placing==="arm"));$("bArt").setAttribute("aria-pressed",String(G.placing==="art"));
   $("bInf").disabled=G.res[RED]<1||G.phase==="over";$("bArm").disabled=G.res[RED]<2||G.phase==="over";
   cv.style.cursor=G.airMode?"crosshair":G.placing?"cell":tool==="move"?"default":"crosshair";
@@ -1466,7 +1547,7 @@ function hud(){
   $("casR").textContent=`✝ ${fm(cas.dead[RED])} ✚ ${fm(cas.wnd[RED])}`;$("casB").textContent=`✝ ${fm(cas.dead[BLK])} ✚ ${fm(cas.wnd[BLK])}`;
   $("forces").textContent=`${n[0]} vs ${n[1]} div`+(enc[0]?` · ${enc[0]} cut off`:"");$("forces").title=`Divisions ${n[0]} vs ${n[1]}`+(enc[0]?`, ${enc[0]} of yours cut off`:"")+(enc[1]?`, ${enc[1]} enemy cut off`:"");
   $("reserve").firstChild.textContent=`${G.res[RED]} RES`;$("resfill").style.width=(G.phase==="battle"?G.inc[RED]*100:0)+"%";
-  const di=G.res[RED]<1||G.phase==="over",da=G.res[RED]<2||G.phase==="over";if($("bInf").disabled!==di)$("bInf").disabled=di;if($("bArm").disabled!==da)$("bArm").disabled=da;if($("bArt").disabled!==da)$("bArt").disabled=da;if($("bDepot").disabled!==da)$("bDepot").disabled=da;$("bDepot").setAttribute("aria-pressed",String(G.placing==="depot"));
+  const di=G.res[RED]<1||G.phase==="over",da=G.res[RED]<2||G.phase==="over";if($("bInf").disabled!==di)$("bInf").disabled=di;if($("bArm").disabled!==da)$("bArm").disabled=da;if($("bArt").disabled!==da)$("bArt").disabled=da;if($("bDepot").disabled!==da)$("bDepot").disabled=da;if($("bRecon").disabled!==di)$("bRecon").disabled=di;$("bRecon").setAttribute("aria-pressed",String(G.placing==="recon"));$("bDepot").setAttribute("aria-pressed",String(G.placing==="depot"));
   if(G.placing&&G.res[RED]<(T[G.placing]?T[G.placing].cost:DEPOT.cost)){G.placing=null;syncUI();}
 }
 

@@ -33,3 +33,4 @@ Drag a unit (or a selected group) to move it. Tap the map to send the selection.
 ## Data credits
 
 Natural Earth (public domain) for land, water, roads, urban areas and borders. GeoNames via all-the-cities (CC BY 4.0) for cities. Terrain colour and relief come from the three.js example textures. The `tools/` scripts rebuild `world.json` and `terrain.png`.
+- **Fog of war and recon planes:** you only see enemies within sight of your troops, depots and HQ; lost contacts fade out as ghosts. Guns only fire at what someone can see. Recon (1 reserve) sends a plane to scout a spot; enemy guns can shoot it down. Black scouts too. Fog can be turned off in the menu.
