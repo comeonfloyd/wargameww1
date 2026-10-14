@@ -194,7 +194,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li>Units take ground around them. Troops cut off from their own map edges and HQ wither. Water is impassable.</li>
       <li>Drag a unit in a straight line and it plans its own route; drag in a curve and it follows the route you drew.</li>
       <li>Orders route around water, rough ground and enemy troops. Troops marching on roads move 60% faster (cavalry 70%, artillery 80%), so long moves follow the road network. Forest, hills, mountains, marsh and cities slow troops (horses and guns most) and protect defenders; hills give the high ground. Hover over the map to see the ground.</li>
-      <li><b>Cavalry</b> (slash) is fast: use it to raid, exploit gaps and run down cut-off troops, but it charges badly into trenches. <b>Artillery</b> (dot) is slow and weak up close; while standing still it shells the enemy up to 16 km away on its own, preferring troops already fighting yours, and smashes their trenches. Select a battery to see its range.</li>
+      <li><b>Infantry</b> is a box with a cross, <b>cavalry</b> a diamond and <b>artillery</b> a round gun with a dot; the dark part of each symbol shows its strength. Cavalry is fast: use it to raid, exploit gaps and run down cut-off troops, but it charges badly into trenches. Artillery is slow and weak up close; while standing still it shells the enemy up to 16 km away on its own, preferring troops already fighting yours, and smashes their trenches. Select a battery to see its range.</li>
       <li>Fighting and shelling scar the ground: cratered land slows movement, gives a little cover, and ruined towns feed fewer reserves.</li>
       <li id="winrule"></li>
     </ul>
@@ -1274,6 +1274,20 @@ function drawPlanes(){
     ctx.lineWidth=4;ctx.strokeStyle="#E6E9DD";ctx.stroke();ctx.lineWidth=2.2;ctx.strokeStyle=p.s===RED?"#C9252C":"#1C1E1A";ctx.stroke();ctx.restore();
     if(p.s===RED){ctx.strokeStyle="rgba(201,37,44,.3)";ctx.lineWidth=1;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(x,y,INTEL.plane.r*K*cam.s,0,7);ctx.stroke();ctx.setLineDash([]);}}
 }
+/* unit symbols: infantry a box with a cross, cavalry a diamond with a lance slash, artillery a round gun with a shell dot.
+   The coloured part fills from the bottom with the unit's strength. */
+function unitPath(c,type,x,y,R){c.beginPath();
+  if(type==="inf"){const w=R*1.15,h=R*0.8;c.rect(x-w,y-h,2*w,2*h);}
+  else if(type==="arm"){const d=R*1.3;c.moveTo(x,y-d);c.lineTo(x+d,y);c.lineTo(x,y+d);c.lineTo(x-d,y);c.closePath();}
+  else c.arc(x,y,R*0.98,0,7);}
+function unitMark(c,type,x,y,R,col,w){c.lineCap="round";
+  const seg=(a,b,e,f)=>{c.moveTo(a,b);c.lineTo(e,f);};
+  for(const pass of [0,1]){c.strokeStyle=pass?col:"rgba(28,30,26,.55)";c.lineWidth=pass?w:w+2;c.beginPath();
+    if(type==="inf"){const W=R*1.15,H=R*0.8;seg(x-W,y-H,x+W,y+H);seg(x-W,y+H,x+W,y-H);}
+    else if(type==="arm"){const d=R*0.62;seg(x-d,y+d,x+d,y-d);}
+    c.stroke();}
+  if(type==="art"){c.fillStyle="rgba(28,30,26,.55)";c.beginPath();c.arc(x,y,Math.max(2.6,R*0.36)+1,0,7);c.fill();c.fillStyle=col;c.beginPath();c.arc(x,y,Math.max(2.6,R*0.36),0,7);c.fill();}
+  c.lineCap="butt";}
 function drawBattle(now){
   const own=G?G.owner:OWN0;
   if(!terrCv||terrFor!==M)territoryFrom(own);
@@ -1327,20 +1341,19 @@ function drawBattle(now){
   const R=unitR();
   for(const u of G.units){
     if(!shown(u)){if(!seen(u,INTEL.mem))continue;const x=sx(u.seenX),y=sy(u.seenY),a=1-(G.t-u.seenT)/INTEL.mem;
-      ctx.strokeStyle=`rgba(28,30,26,${0.25+0.45*a})`;ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(x,y,R*0.85,0,7);ctx.stroke();ctx.setLineDash([]);
-      ctx.fillStyle=`rgba(28,30,26,${0.15+0.25*a})`;ctx.fill();
-      if(u.type==="arm"){ctx.beginPath();ctx.moveTo(x-R*0.36,y+R*0.36);ctx.lineTo(x+R*0.36,y-R*0.36);ctx.stroke();}
-      if(u.type==="art"){ctx.beginPath();ctx.arc(x,y,Math.max(1.5,R*0.2),0,7);ctx.stroke();}continue;}
+      unitPath(ctx,u.type,x,y,R*0.85);ctx.fillStyle=`rgba(28,30,26,${0.15+0.25*a})`;ctx.fill();
+      ctx.strokeStyle=`rgba(28,30,26,${0.3+0.5*a})`;ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+      ctx.globalAlpha=0.35+0.4*a;unitMark(ctx,u.type,x,y,R*0.85,"#E6E9DD",1.4);ctx.globalAlpha=1;continue;}
     const x=sx(u.x),y=sy(u.y);if(x<-30||y<-30||x>VW+30||y>VH+30)continue;
     const col=u.side===RED?"#C9252C":"#1C1E1A";
     if(G.sel.has(u.id)){ctx.fillStyle="rgba(226,177,60,.4)";ctx.beginPath();ctx.arc(x,y,R+6,0,7);ctx.fill();}
     if(!u.sup){ctx.strokeStyle=`rgba(226,177,60,${0.5+0.5*Math.sin(now/150)})`;ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(x,y,R+4,0,7);ctx.stroke();ctx.setLineDash([]);}
-    ctx.fillStyle=u.hit>0&&Math.floor(now/90)%2?"#E2B13C":col;ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill();
-    ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.5;ctx.stroke();
-    ctx.strokeStyle=u.side===RED?"#FFD3CF":"#C8CCBE";ctx.lineWidth=Math.max(2,R*0.28);
-    ctx.beginPath();ctx.arc(x,y,R*0.62,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.max(0,u.str)/100);ctx.stroke();
-    if(u.type==="arm"){ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(x-R*0.42,y+R*0.42);ctx.lineTo(x+R*0.42,y-R*0.42);ctx.stroke();}
-    if(u.type==="art"){ctx.fillStyle="#E6E9DD";ctx.beginPath();ctx.arc(x,y,Math.max(1.8,R*0.24),0,7);ctx.fill();
+    const flash=u.hit>0&&Math.floor(now/90)%2,ext=u.type==="arm"?R*1.3:R;
+    unitPath(ctx,u.type,x,y,R);ctx.fillStyle=u.side===RED?"#E8B4AE":"#A3A699";ctx.fill();
+    ctx.save();ctx.clip();const f=Math.max(0,Math.min(1,u.str/100));ctx.fillStyle=flash?"#E2B13C":col;ctx.fillRect(x-2*R,y+ext-2*ext*f,4*R,2*ext*f+1);ctx.restore();
+    unitPath(ctx,u.type,x,y,R);ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.6;ctx.stroke();
+    unitMark(ctx,u.type,x,y,R,"#F4F5EE",Math.max(1.4,R*0.16));
+    if(u.type==="art"){
       if(G.sel.has(u.id)){ctx.strokeStyle="rgba(201,37,44,.45)";ctx.lineWidth=1.2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(x,y,ARTY.range*K*cam.s,0,7);ctx.stroke();ctx.setLineDash([]);}}
     if(u.side===RED&&(G.sel.has(u.id)||R>=9)){const bw=R*2,bx=x-R,by=y+R+(u.dig?7:4);
       ctx.fillStyle="rgba(28,30,26,.55)";ctx.fillRect(bx-1,by-1,bw+2,7);
