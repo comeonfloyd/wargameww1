@@ -182,7 +182,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
     <ul id="briefList">
       <li>Drag your dots to position them. Spend your 4 reserves with <b>+Inf</b>, <b>+Cav</b> and <b>+Art</b>.</li>
       <li><b>Moving troops:</b> select units (tap one, <b>Box</b> to drag a box round several, or <b>All</b>). Then either drag any selected unit to where it should go (the group keeps its formation), tap the map to send the group there, or press <b>Line</b> and draw a front: each unit takes the nearest spot on it. A cross marks each selected unit's destination.</li>
-      <li><b>Defence lines:</b> select units, press <b>Dig</b> (<kbd>D</kbd>) and draw a line on the map: the selected units spread out along it and dig a trench that follows your line. Press <b>Dig</b> twice instead to dig in where they stand (or where they arrive). Trenches grow while the unit is still and out of combat (about half a minute for infantry; cavalry and artillery dig slowly). Troops in their own trenches take up to 45% less damage, and enemies crossing them are slowed. Shelling and fighting wreck trenches, and captured ones are only half as good. The longer the stretch each unit has to dig, the slower it goes; planned trench shows as a dashed line until work starts. You can draw defence lines during deployment too.</li>
+      <li><b>Defence lines:</b> select units, press <b>Dig</b> (<kbd>D</kbd>) and draw a line on the map: the selected units spread out along it and dig a trench that follows your line. Or tap a spot instead: they march there and dig in on arrival. Press <b>Dig</b> twice to dig in right where they stand. Trenches grow while the unit is still and out of combat (about half a minute for infantry; cavalry and artillery dig slowly). Troops in their own trenches take up to 45% less damage, and enemies crossing them are slowed. Shelling and fighting wreck trenches, and captured ones are only half as good. The longer the stretch each unit has to dig, the slower it goes; planned trench shows as a dashed line until work starts. You can draw defence lines during deployment too.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
       <li>Units take ground around them. Troops cut off from their own map edges and HQ wither. Water is impassable.</li>
       <li>Drag a unit in a straight line and it plans its own route; drag in a curve and it follows the route you drew.</li>
@@ -1237,7 +1237,8 @@ function endPtr(e){
     else{if(!g.add)G.sel.clear();for(const u of own()){const x=sx(u.x),y=sy(u.y);if(x>=x0&&x<=x1&&y>=y0&&y<=y1)G.sel.add(u.id);}
       if(tool==="box"){setTool("move");if(G.sel.size)toast(`${G.sel.size} selected: drag one to move them together, tap the map to send them, or press Line to spread them along a front`);}}
   }else if(g.type==="line"){
-    if(g.fort){setTool("move");if(g.moved)orderLine(g.pts,true);else digHere();}
+    if(g.fort){setTool("move");if(g.moved)orderLine(g.pts,true);
+      else{const h=hitUnit(px,py);if(h&&G.sel.has(h.id))digHere();else digAt(wx(px),wy(py));}}
     else{if(g.moved)orderLine(g.pts);else if(G.sel.size)orderGroup(null,wx(px),wy(py));}
     if(tool==="line")setTool("move");
   }else if(g.type==="pan"&&!g.moved){
@@ -1279,9 +1280,12 @@ $("bHold").onclick=()=>{for(const u of selected()){u.tx=u.ty=null;u.path=null;}s
 function digHere(){const sel=selected();if(!sel.length){toast("Select units first, then Dig");return;}
   for(const u of sel){dropPlan(u);u.dig=true;}const moving=sel.some(u=>u.path);
   toast(`${sel.length} unit${sel.length>1?"s":""} will dig in${moving?" when they arrive":" where they stand"}`);syncUI();}
+function digAt(x,y){ // march there, then dig in on arrival
+  orderGroup(null,x,y);const sel=selected();for(const u of sel)u.dig=true;
+  toast(`${sel.length} unit${sel.length>1?"s":""} will march there and dig in`);syncUI();}
 function digIn(){if(!G.sel.size){toast("Select units first, then Dig");return;}
   if(tool==="dig"){setTool("move");digHere();return;}
-  setTool("dig");toast("Draw the defence line for them to dig, or press Dig again to dig in where they stand");}
+  setTool("dig");toast("Draw a defence line, tap where they should march and dig in, or press Dig again to dig in where they stand");}
 $("bDig").onclick=digIn;
 $("bInf").onclick=()=>{G.airMode=null;G.placing=G.placing==="inf"?null:"inf";if(G.placing)toast("Tap your own ground to place infantry");syncUI();};
 $("bArm").onclick=()=>{G.placing=G.placing==="arm"?null:"arm";if(G.placing)toast("Tap your own ground to place cavalry");syncUI();};
