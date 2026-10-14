@@ -594,8 +594,9 @@ function setOrder(u,x,y,dg){
 }
 function aiOrder(u,x,y){if(u.tx!=null&&Math.hypot(u.tx-x,u.ty-y)<1.5*K)return;setOrder(u,x,y);}
 
-/* casualties: a division is about 15,000 men; every point of strength lost is 150 men, roughly one killed for every three wounded */
-const MEN=150,KILLED=0.27;
+/* casualties: a division is about 15,000 men. Strength is fighting power, not head count: most of a loss is shock, disorder and
+   stragglers who come back, so only about 30% of it is real casualties (45 men per point), roughly one killed for every three wounded */
+const MEN=45,KILLED=0.27;
 function step(dt){
   G.t+=dt;
   const U=G.units,ER=ENGAGE*K,s0=new Map(U.map(u=>[u.id,u.str]));
