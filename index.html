@@ -187,7 +187,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Moving troops:</b> select units (tap one, <b>Box</b> to drag a box round several, or <b>All</b>). Then either drag any selected unit to where it should go (the group keeps its formation), tap the map to send the group there, or press <b>Line</b> and draw a front: each unit takes the nearest spot on it. A cross marks each selected unit's destination.</li>
       <li><b>Defence lines:</b> select units, press <b>Dig</b> (<kbd>D</kbd>) and draw a line on the map: the selected units spread out along it and dig a trench that follows your line. Or tap a spot instead: they march there and dig in on arrival. Press <b>Dig</b> twice to dig in right where they stand. Trenches grow while the unit is still and out of combat (about half a minute for infantry; cavalry and artillery dig slowly). Troops in their own trenches take up to 45% less damage, and enemies crossing them are slowed. Shelling and fighting wreck trenches, and captured ones are only half as good. The longer the stretch each unit has to dig, the slower it goes; planned trench shows as a dashed line until work starts. You can draw defence lines during deployment too.</li>
       <li><b>Ammunition and fatigue:</b> the bars under a selected unit show ammunition (yellow) and freshness (blue). Fighting burns ammunition, which is restocked from depots (see Supply); out of ammunition, troops fight at a third of their strength and guns fall silent. Marching, fighting and digging tire troops, and tired troops move slower, hit softer and take more losses. They recover by resting, fastest well behind the line.</li>
-      <li><b>Fog of war:</b> your own ground is always clear, but beyond the front you only see enemies within sight of your troops, depots and HQ (about 14 km; cavalry 20 km). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly) to scout behind the lines; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
+      <li><b>Fog of war:</b> your own ground is always clear, but beyond the front you only see enemies within sight of your troops, depots and HQ (about 14 km; cavalry 20 km). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly, once the battle has started) to scout behind the lines: the strip it flies over stays visible for a while; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
       <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (crates) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
@@ -758,13 +758,14 @@ function bombard(dt){
 /* fog of war: each side sees only what its troops, depots and HQ can see, plus what its recon planes fly over.
    An enemy unit is "seen" while in sight; it is remembered at its last seen spot for INTEL.mem seconds (drawn as a faded ghost).
    Guns only fire at enemies their side can see right now. Enemy depots and trenches stay on the map once spotted. */
-const INTEL={sight:{inf:14,arm:20,art:11},hq:14,depot:10,mem:75,plane:{cost:1,speed:22,r:13,max:2,risk:0.05}};
+const INTEL={sight:{inf:14,arm:20,art:11},hq:14,depot:10,mem:75,plane:{cost:1,speed:45,r:14,max:2,risk:0.05,photo:25}};
 const seen=(e,age)=>e.seenT!=null&&G.t-e.seenT<=age; // e is seen by the other side
 function markVis(v,x,y,r){const n=Math.ceil(r/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);
   for(let j=Math.max(0,j0-n);j<=Math.min(GH-1,j0+n);j++)for(let i=Math.max(0,i0-n);i<=Math.min(GW-1,i0+n);i++)if(Math.hypot((i+.5)*CELL-x,(j+.5)*CELL-y)<r)v[j*GW+i]=1;}
 function spot(){
   if(!G.vis||G.vis[0].length!==NC)G.vis=[new Uint8Array(NC),new Uint8Array(NC)];
-  for(const s of [RED,BLK]){const v=G.vis[s];v.fill(0);
+  if(!G.photo||G.photo[0].length!==NC)G.photo=[new Float32Array(NC),new Float32Array(NC)];
+  for(const s of [RED,BLK]){const v=G.vis[s],ph=G.photo[s];v.fill(0);for(let c=0;c<NC;c++)if(ph[c]>G.t)v[c]=1; // ground a recon plane photographed stays watched for a while
     for(const u of G.units)if(u.side===s)markVis(v,u.x,u.y,INTEL.sight[u.type]*K*(0.6+0.4*u.str/100));
     for(const d of G.depots)if(d.s===s)markVis(v,d.x,d.y,INTEL.depot*K);
     const h=M.hq[s];if(h&&G.owner[h.c]===s)markVis(v,h.x,h.y,INTEL.hq*K);
@@ -777,11 +778,12 @@ function reveal(){ // copy what each side can see onto the enemy's units, depots
   for(const w of G.works)if(!w.known&&G.vis[1-w.s][cellOf(w.x,w.y)])w.known=true;
 }
 function launchRecon(s,x,y){
+  if(G.phase!=="battle"){if(s===RED)toast("Recon planes fly once the battle has started");return false;}
   if(G.planes.filter(p=>p.s===s).length>=INTEL.plane.max){if(s===RED)toast("Both recon planes are already up");return false;}
   if(G.res[s]<INTEL.plane.cost){if(s===RED)toast("Not enough reserves");return false;}
   const h=M.hq[s]&&G.owner[M.hq[s].c]===s?M.hq[s]:null;let o=h?[h.x,h.y]:null;
   if(!o){const d=G.depots.find(d=>d.s===s);o=d?[d.x,d.y]:null;}if(!o){const u=G.units.find(u=>u.side===s);if(!u)return false;o=[u.x,u.y];}
-  G.res[s]-=INTEL.plane.cost;G.planes.push({s,x:o[0],y:o[1],ox:o[0],oy:o[1],tx:clampX(x),ty:clampY(y),leg:0,loiter:2.5});
+  G.res[s]-=INTEL.plane.cost;G.planes.push({s,x:o[0],y:o[1],ox:o[0],oy:o[1],tx:clampX(x),ty:clampY(y),leg:0,loiter:4});
   if(s===RED)toast("Recon plane on its way: it reports every unit it flies over");return true;
 }
 function flyRecon(dt){
@@ -792,6 +794,8 @@ function flyRecon(dt){
     else if(p.leg===1&&d<st){p.done=true;}
     else{p.x+=dx/d*st;p.y+=dy/d*st;p.a=Math.atan2(dy,dx);}
     if(p.leg===1&&p.loiter>-1)p.loiter=-1;
+    {const ph=G.photo&&G.photo[p.s],n=Math.ceil(INTEL.plane.r*K/CELL),i0=Math.floor(p.x/CELL),j0=Math.floor(p.y/CELL);
+      if(ph)for(let j=Math.max(0,j0-n);j<=Math.min(GH-1,j0+n);j++)for(let i=Math.max(0,i0-n);i<=Math.min(GW-1,i0+n);i++)if(Math.hypot((i+.5)*CELL-p.x,(j+.5)*CELL-p.y)<INTEL.plane.r*K)ph[j*GW+i]=G.t+INTEL.plane.photo;}
     // seen from the plane: units underneath are reported straight away
     const R=INTEL.plane.r*K;for(const u of G.units)if(u.side!==p.s&&Math.abs(u.x-p.x)<R&&Math.abs(u.y-p.y)<R&&Math.hypot(u.x-p.x,u.y-p.y)<R){u.seenT=G.t;u.seenX=u.x;u.seenY=u.y;u.seenS=u.str;}
     for(const d of G.depots)if(d.s!==p.s&&Math.hypot(d.x-p.x,d.y-p.y)<R)d.known=true;
@@ -1259,7 +1263,7 @@ let fogCv=null,fctx=null,fimg=null;
 function drawFog(){
   if(!FOG||!G.vis)return;
   if(!fogCv||fogCv.width!==GW||fogCv.height!==GH){fogCv=document.createElement("canvas");fogCv.width=GW;fogCv.height=GH;fctx=fogCv.getContext("2d");fimg=fctx.createImageData(GW,GH);G.fogDirty=true;}
-  if(G.fogDirty){G.fogDirty=false;const v=G.vis[RED],d=fimg.data;for(let c=0;c<NC;c++){const o=c*4;d[o]=58;d[o+1]=60;d[o+2]=52;d[o+3]=v[c]||G.owner[c]===RED?0:64;}fctx.putImageData(fimg,0,0);}
+  if(G.fogDirty){G.fogDirty=false;const v=G.vis[RED],d=fimg.data;for(let c=0;c<NC;c++){const o=c*4;d[o]=58;d[o+1]=60;d[o+2]=52;d[o+3]=v[c]||G.owner[c]===RED?0:150;}fctx.putImageData(fimg,0,0);}
   ctx.imageSmoothingEnabled=true;ctx.drawImage(fogCv,sx(0),sy(0),GW*CELL*cam.s,GH*CELL*cam.s);
 }
 function drawPlanes(){
