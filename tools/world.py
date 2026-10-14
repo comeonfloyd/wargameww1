@@ -38,6 +38,7 @@ rn=lambda p:[p.get('name') or '',int(p.get('scalerank') or 9)]
 d['rivers']=lines('ne_10m_rivers_lake_centerlines.geojson',tag=rn)+lines('ne_10m_rivers_europe.geojson',tag=rn)
 d['borders']=lines('ne_10m_admin_0_boundary_lines_land.geojson')
 d['roads']=lines('ne_10m_roads.geojson',keep=lambda p:'Ferry' not in (p.get('type') or ''),tag=lambda p:1 if p.get('type') in ('Major Highway','Beltway','Bypass') else 2)
+d['rails']=lines('ne_10m_railroads.geojson',keep=lambda p:(p.get('scalerank') or 10)<=7)
 c=json.load(open('cities.json'))
 d['cities']=[[n,round(x*Q),round(y*Q),p] for n,x,y,p in c]
 for k,v in d.items(): print(k,len(v),len(json.dumps(v,separators=(',',':'),ensure_ascii=False)))

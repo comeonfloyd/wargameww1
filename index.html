@@ -162,6 +162,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <button id="tLine" aria-pressed="false" title="Line: draw a front for the selected units to spread along (or right-drag)">Line</button>
       <button id="bDig" title="Dig: draw a defence line for the selected units, or press twice to dig in where they stand (D)">Dig</button>
       <button id="tRoad" aria-pressed="false" title="Road: draw a supply road from your ground (1 reserve per 25 km). Finished roads speed marches and feed depots">Road</button>
+      <button id="tRail" aria-pressed="false" title="Rail: draw a railway from your ground (1 reserve per 12 km). Trains move troops very fast on your own ground">Rail</button>
     </div>
     <div class="sep"></div>
     <div class="grp">
@@ -189,6 +190,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Ammunition and fatigue:</b> the bars under a selected unit show ammunition (yellow) and freshness (blue). Fighting burns ammunition, which is restocked from depots (see Supply); out of ammunition, troops fight at a third of their strength and guns fall silent. Marching, fighting and digging tire troops, and tired troops move slower, hit softer and take more losses. They recover by resting, fastest well behind the line.</li>
       <li><b>Fog of war:</b> your own ground is always clear, but beyond the front you only see enemies within sight of your troops, depots and HQ (about 14 km; cavalry 20 km). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly, once the battle has started) to scout behind the lines: the strip it flies over stays visible for a while; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
       <li><b>Reinforcements:</b> before the battle you may deploy anywhere on your ground. Once it starts, new divisions come up by rail: place them within 7 km of a major city (2+ points) or your HQ that you hold and supply; these are circled while you place. Black's reinforcements arrive the same way, so taking its cities slows them down.</li>
+      <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, three to four times faster than on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
       <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
@@ -246,7 +248,7 @@ async function loadWorld(){
   WORLD={land:d.land.map(a=>item(dec(a))),land50:d.land50.map(a=>item(dec(a))),lakes:d.lakes.map(a=>item(dec(a))),
     rivers:d.rivers.map(([m,a])=>Object.assign(item(dec(a)),{name:m[0],rank:m[1]})),borders:d.borders.map(a=>item(dec(a))),
     roads:d.roads.map(([k,a])=>Object.assign(item(dec(a)),{k})),
-    urban:(d.urban||[]).map(a=>item(dec(a))),
+    urban:(d.urban||[]).map(a=>item(dec(a))),rails:(d.rails||[]).map(a=>item(dec(a))),
     cities:d.cities.map(([n,x,y,p])=>({n,lon:x/100,lat:y/100,p,key:norm(n)}))};
 }
 const hit=(b,v)=>b[2]>=v[0]&&b[0]<=v[2]&&b[3]>=v[1]&&b[1]<=v[3];
@@ -337,7 +339,7 @@ const clampX=x=>clamp(x,0.5,M.w-0.5), clampY=y=>clamp(y,0.5,M.h-0.5);
 
 function setupGrid(w,h){
   M.w=w;M.h=h;CELL=Math.max(w,h*1.43)/200;K=CELL/2;GW=Math.ceil(w/CELL);GH=Math.ceil(h/CELL);NC=GW*GH;
-  M.water=new Uint8Array(NC);M.river=new Uint8Array(NC);M.city=new Uint8Array(NC);M.towns=[];M.land=new Uint8Array(NC);M.road=new Uint8Array(NC);
+  M.water=new Uint8Array(NC);M.river=new Uint8Array(NC);M.city=new Uint8Array(NC);M.towns=[];M.land=new Uint8Array(NC);M.road=new Uint8Array(NC);M.rail=new Uint8Array(NC);
 }
 function clipPoly(p,b){ // Sutherland–Hodgman against a lon/lat rectangle
   let pts=[];for(let i=0;i<p.length;i+=2)pts.push([p[i],p[i+1]]);
@@ -356,12 +358,13 @@ function buildGeo(bbox,name){
   const pad=0.3,v=[W-pad,S-pad,E+pad,N+pad];
   const km=a=>{const o=new Float32Array(a.length);for(let i=0;i<a.length;i+=2){o[i]=(a[i]-W)*KX;o[i+1]=(N-a[i+1])*KY;}return o;};
   const kmPts=pts=>{const o=new Float32Array(pts.length*2);pts.forEach((q,i)=>{o[2*i]=(q[0]-W)*KX;o[2*i+1]=(N-q[1])*KY;});return o;};
-  M.L={land:[],lakes:[],rivers:[],roads:[],borders:[],urban:[]};
+  M.L={land:[],lakes:[],rivers:[],roads:[],borders:[],urban:[],rails:[]};
   for(const it of WORLD.land)if(hit(it.b,v)){const c=clipPoly(it.p,v);if(c)M.L.land.push(kmPts(c));}
   for(const it of WORLD.lakes)if(hit(it.b,v))M.L.lakes.push(km(it.p));
   for(const it of WORLD.rivers)if(hit(it.b,v))M.L.rivers.push({p:km(it.p),rank:it.rank,name:it.name});
   for(const it of WORLD.roads)if(hit(it.b,v))M.L.roads.push({p:km(it.p),k:it.k});
   for(const it of WORLD.borders)if(hit(it.b,v))M.L.borders.push(km(it.p));
+  for(const it of WORLD.rails||[])if(hit(it.b,v))M.L.rails.push(km(it.p));
   // water mask: rasterise land, punch out lakes, read back per cell
   const R=3,c=document.createElement("canvas");c.width=GW*R;c.height=GH*R;const g=c.getContext("2d");const sc=R/CELL;
   g.fillStyle="#000";g.fillRect(0,0,c.width,c.height);g.setTransform(sc,0,0,sc,0,0);
@@ -382,6 +385,8 @@ function buildGeo(bbox,name){
     const ud=ug.getImageData(0,0,uc.width,uc.height).data;
     for(let j=0;j<GH;j++)for(let i=0;i<GW;i++){let n=0;for(let b=0;b<Rr;b++)for(let a=0;a<Rr;a++)if(ud[((j*Rr+b)*uc.width+i*Rr+a)*4]>127)n++;if(n>=3&&!M.water[j*GW+i])M.land[j*GW+i]=6;} }
   for(const r of M.L.roads)rasterLine(r.p,M.road);
+  for(const p of M.L.rails)rasterLine(p,M.rail);
+  for(let k=0;k<NC;k++)if(M.water[k])M.rail[k]=0;
   for(const r of M.L.rivers)rasterLine(r.p,M.river);
   for(let k=0;k<NC;k++)if(M.water[k])M.river[k]=0;
   // towns: biggest first, spaced out, on land
@@ -412,7 +417,7 @@ function buildImage(img,dataURL,widthKm,name){
   for(let j=0;j<GH;j++)for(let i=0;i<GW;i++){let n=0,f=0,u=0;for(let b=0;b<R;b++)for(let a=0;a<R;a++){const k=((j*R+b)*c.width+i*R+a)*4,r=d[k],gg=d[k+1],bl=d[k+2];
       if(bl>150&&bl-r>35&&bl>=gg-8)n++;else if(gg>r+20&&r<medR-10)f++;else if(r>215&&Math.abs(r-gg)<22&&bl<=r+8&&gg>=bl-8)u++;}
     const c0=j*GW+i;if(n>R*R/2)M.water[c0]=1;else if(f>R*R/2)M.land[c0]=1;else if(u>R*R/2)M.land[c0]=6;}
-  M.road=new Uint8Array(NC);M.terLayer=null;
+  M.road=new Uint8Array(NC);M.rail=new Uint8Array(NC);M.terLayer=null;
 }
 function loadImageFile(file){
   const rd=new FileReader();
@@ -522,7 +527,7 @@ function newBattle(){
     for(let k=0;k<nArt;k++){const p=at((k+.5)/nArt*len),q=intoSide(p[0],p[1],s,10*K);if(q)addUnit(s,"art",q[0],q[1]);}
   }
   const h=M.hq[BLK];if(h){for(const d of [-3,3]){const q=nearestCell(h.x+d*K,h.y,c=>!M.water[c]&&G.owner[c]===BLK);if(q)addUnit(BLK,"inf",q[0],q[1]).garrison=true;}}
-  if(!M.road0)M.road0=M.road.slice();else M.road.set(M.road0); // field roads from the last battle are gone
+  if(!M.road0)M.road0=M.road.slice();else M.road.set(M.road0);if(!M.rail0)M.rail0=M.rail.slice();else M.rail.set(M.rail0); // field roads from the last battle are gone
   seedDepots();
   buildCosts();computeSupply();updateVP();aiSpendReserves(true);spot();
 }
@@ -558,7 +563,9 @@ function intoSide(x,y,s,dist){ // walk from the front into side s's ground
 
 /* movement: terrain speed, and a weighted grid path that goes around water, rough ground and enemy troops */
 const ROAD={inf:1.6,arm:1.7,art:1.8}; // road march: columns move far faster, even through rough country
-function spdF(type,c){let f=TER[M.land[c]][type];if(M.road[c])f=Math.max(f,0.7)*ROAD[type];return f*(1-0.55*(G?G.ter[c]:0));}
+const RAILF={inf:4.5,arm:3.2,art:4.5}; // by train: only on your own ground and out of contact
+function spdF(type,c,side){let f=TER[M.land[c]][type];if(M.road[c])f=Math.max(f,0.7)*ROAD[type];
+  if(M.rail&&M.rail[c]&&(side==null||G&&G.owner[c]===side))f=Math.max(f,RAILF[type]);return f*(1-0.55*(G?G.ter[c]:0));}
 function buildCosts(){M.cost={};for(const t of ["inf","arm","art"]){const a=new Float32Array(NC);for(let c=0;c<NC;c++)a[c]=M.water[c]?Infinity:1/Math.max(0.08,spdF(t,c))+(M.river[c]?1.2:0);M.cost[t]=a;}}
 function dangerMask(side,tx,ty){ // ground within reach of enemy troops, except around the destination itself
   const m=new Uint8Array(NC),R=(ENGAGE+1.5)*K,keep=10*K;
@@ -645,7 +652,7 @@ function step(dt){
     const [wx_,wy_]=u.path[0],dx=wx_-u.x,dy=wy_-u.y,d=Math.hypot(dx,dy);
     if(d<0.25*K){u.path.shift();continue;}
     const c=cellOf(u.x,u.y);
-    const sp=(1-0.4*u.fat/100)*T[u.type].speed*K*spdF(u.type,c)*(M.river[c]?0.45:1)*(G.owner[c]!==u.side?0.75:1)*(u.eng?0.4:1)*(u.sup?1:0.7)*(1-0.45*obstacle(u));
+    const sp=(1-0.4*u.fat/100)*T[u.type].speed*K*(u.eng?spdF(u.type,c,-1):spdF(u.type,c,u.side))*(M.river[c]?0.45:1)*(G.owner[c]!==u.side?0.75:1)*(u.eng?0.4:1)*(u.sup?1:0.7)*(1-0.45*obstacle(u));
     // in contact: pulling back is quicker than pushing on, and only a foe straight ahead stops the move (sidesteps and withdrawals always work)
     let ahead=0;for(const v of u.foes){const fx=v.x-u.x,fy=v.y-u.y,fd=Math.hypot(fx,fy)||1;ahead=Math.max(ahead,(fx*dx+fy*dy)/(fd*d));}
     const s=Math.min(d,sp*dt*(u.eng&&u.side===RED&&ahead<0.2?1.75:1)),nx=u.x+dx/d*s,ny=u.y+dy/d*s;
@@ -695,7 +702,7 @@ function logistics(dt){
 }
 /* ammunition depots: troops within 16 km of one of their depots (or their HQ) restock fast; a depot off the road network works at under half rate.
    Depots fall if their ground is taken, and enemy guns shell them. Field roads drawn by the player speed marches and feed depots once finished. */
-const DEPOT={r:16,cost:2,max:10,hp:100,shell:22,offRoad:0.45},ROADB={speed:3,per:25};
+const DEPOT={r:16,cost:2,max:10,hp:100,shell:22,offRoad:0.45},ROADB={speed:3,per:25},RAILB={speed:1.6,per:12};
 function nearRoad(x,y,r){const n=Math.ceil(r/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);
   for(let j=j0-n;j<=j0+n;j++)for(let i=i0-n;i<=i0+n;i++){if(i<0||j<0||i>=GW||j>=GH)continue;if(M.road[j*GW+i])return true;}return false;}
 function snapRoad(x,y,s){const n=Math.ceil(6*K/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);let best=null,bd=1e9;
@@ -719,16 +726,17 @@ function placeDepot(x,y){
   if(G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<8*K)){toast("Too close to the enemy");return;}
   const d=addDepot(RED,x,y);G.res[RED]-=DEPOT.cost;if(G.res[RED]<DEPOT.cost)G.placing=null;
   toast(depotEff(d)===1?"Depot built on a road: full supply within 16 km":"Depot built off-road: under half supply. Build it on a road, or draw a Road to it");syncUI();}
-function rasterRoad(r){for(let k=1;k<r.pts.length;k++){const [x0,y0]=r.pts[k-1],[x1,y1]=r.pts[k],n=Math.ceil(Math.hypot(x1-x0,y1-y0)/(CELL*0.4));
-  for(let m=0;m<=n;m++){const c=cellOf(x0+(x1-x0)*m/n,y0+(y1-y0)*m/n);if(!M.water[c]&&G.owner[c]===r.s)M.road[c]=1;}}}
-function buildRoad(raw){
+function rasterRoad(r){const A=r.rail?M.rail:M.road;for(let k=1;k<r.pts.length;k++){const [x0,y0]=r.pts[k-1],[x1,y1]=r.pts[k],n=Math.ceil(Math.hypot(x1-x0,y1-y0)/(CELL*0.4));
+  for(let m=0;m<=n;m++){const c=cellOf(x0+(x1-x0)*m/n,y0+(y1-y0)*m/n);if(!M.water[c]&&G.owner[c]===r.s)A[c]=1;}}}
+function buildRoad(raw,rail){
+  const what=rail?"railway":"road",B=rail?RAILB:ROADB;
   const pts=simplify(raw,0.5*K);let len=0;for(let k=1;k<pts.length;k++)len+=Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]);
-  if(len<3*K){toast("Draw a longer road");return;}
-  const c0=cellOf(pts[0][0],pts[0][1]);if(G.owner[c0]!==RED){toast("Start the road on your own ground");return;}
-  const cost=Math.max(1,Math.ceil(len/K/ROADB.per));if(G.res[RED]<cost){toast(`That road needs ${cost} reserve${cost>1?"s":""}`);return;}
-  G.res[RED]-=cost;G.roads.push({s:RED,pts,len,done:0});toast(`Pioneers building ${Math.round(len/K)} km of road (${cost} reserve${cost>1?"s":""})`);syncUI();}
+  if(len<3*K){toast(`Draw a longer ${what}`);return;}
+  const c0=cellOf(pts[0][0],pts[0][1]);if(G.owner[c0]!==RED){toast(`Start the ${what} on your own ground`);return;}
+  const cost=Math.max(1,Math.ceil(len/K/B.per));if(G.res[RED]<cost){toast(`That ${what} needs ${cost} reserve${cost>1?"s":""}`);return;}
+  G.res[RED]-=cost;G.roads.push({s:RED,pts,len,done:0,rail:!!rail});toast(`${rail?"Railway troops":"Pioneers"} building ${Math.round(len/K)} km of ${what} (${cost} reserve${cost>1?"s":""})`);syncUI();}
 function stepDepots(dt){
-  for(const r of G.roads)if(r.done<r.len){r.done=Math.min(r.len,r.done+ROADB.speed*K*dt);if(r.done>=r.len){rasterRoad(r);buildCosts();if(r.s===RED)toast("Road finished");}}
+  for(const r of G.roads)if(r.done<r.len){r.done=Math.min(r.len,r.done+(r.rail?RAILB:ROADB).speed*K*dt);if(r.done>=r.len){rasterRoad(r);buildCosts();if(r.s===RED)toast(r.rail?"Railway finished: trains run on it while the ground is yours":"Road finished");}}
   G.depots=G.depots.filter(d=>{if(d.hp>0&&G.owner[cellOf(d.x,d.y)]===d.s)return true;
     G.fx.push({k:"bomb",x:d.x,y:d.y,t:0});if(d.s===RED)toast(d.hp>0?"A depot was overrun":"A depot was destroyed by shelling");return false;});
 }
@@ -1119,7 +1127,7 @@ async function loadGame(){
        ter:new Float32Array(NC),terDirty:true,air:g.air||[],airMode:null,aiAir:0,works:g.works||[],cas:g.cas||{dead:[0,0],wnd:[0,0]},depots:g.depots||[],roads:g.roads||[],planes:[],vis:[new Uint8Array(NC),new Uint8Array(NC)],aiRecon:20};
     if(g.ter){const q=new Uint8Array(unb64(g.ter).buffer);for(let c=0;c<NC&&c<q.length;c++)G.ter[c]=q[c]/255;}
     for(const u of g.units)G.units.push(Object.assign({sup:true,eng:0,hit:0,foes:[],ammo:100,fat:0,relieve:0},u));
-    M.road0=M.road.slice();for(const r of G.roads)if(r.done>=r.len)rasterRoad(r);
+    M.road0=M.road.slice();M.rail0=M.rail.slice();for(const r of G.roads)if(r.done>=r.len)rasterRoad(r);
     if(!g.depots)seedDepots(); // saves from before depots existed
     APP="game";resetCam();FIELD=field();buildCosts();computeSupply();spot();updateVP();showScreen();
     if(G.phase==="setup")showBrief("Deployment",null);else toast("Battle loaded and paused. Press 1× to resume.");
@@ -1150,9 +1158,17 @@ function drawWorks(){
   }
   ctx.lineCap="butt";
 }
+function railStroke(c,pts,done,s){ // track with sleepers; the unbuilt part is a dashed survey line
+  let left=done,cut=null,k=1;const P=[pts[0]];
+  for(;k<pts.length;k++){const a=pts[k-1],b=pts[k],L=Math.hypot(b[0]-a[0],b[1]-a[1]);if(left>=L){P.push(b);left-=L;}else{cut=[a[0]+(b[0]-a[0])*left/L,a[1]+(b[1]-a[1])*left/L];P.push(cut);break;}}
+  c.lineCap="butt";c.strokeStyle="#2E2A26";c.lineWidth=Math.max(3.5,0.55*K*s);c.setLineDash([2,4]);c.beginPath();P.forEach((q,i)=>i?c.lineTo(sx(q[0]),sy(q[1])):c.moveTo(sx(q[0]),sy(q[1])));c.stroke();
+  c.setLineDash([]);c.lineWidth=1.6;c.stroke();
+  if(cut){c.setLineDash([3,6]);c.strokeStyle="rgba(46,42,38,.55)";c.lineWidth=1.4;c.beginPath();c.moveTo(sx(cut[0]),sy(cut[1]));for(;k<pts.length;k++)c.lineTo(sx(pts[k][0]),sy(pts[k][1]));c.stroke();c.setLineDash([]);}
+}
 function drawRoadsDepots(){
   if(!G||!G.depots)return;const s=cam.s;
   for(const r of G.roads){ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Math.max(2,0.5*K*s);
+    if(r.rail){railStroke(ctx,r.pts,r.done,s);continue;}
     let left=r.done;ctx.strokeStyle="#8A6A3A";ctx.beginPath();ctx.moveTo(sx(r.pts[0][0]),sy(r.pts[0][1]));let k=1,cut=null;
     for(;k<r.pts.length;k++){const a=r.pts[k-1],b=r.pts[k],L=Math.hypot(b[0]-a[0],b[1]-a[1]);if(left>=L){ctx.lineTo(sx(b[0]),sy(b[1]));left-=L;}else{cut=[a[0]+(b[0]-a[0])*left/L,a[1]+(b[1]-a[1])*left/L];ctx.lineTo(sx(cut[0]),sy(cut[1]));break;}}
     ctx.stroke();
@@ -1233,6 +1249,8 @@ function drawBase(){
     c.strokeStyle="rgba(150,112,52,.8)";c.lineWidth=1*z;c.beginPath();for(const r of M.L.roads)if(r.k===2)poly(c,r.p);c.stroke();
     c.strokeStyle="rgba(110,78,30,.85)";c.lineWidth=2.4*z;c.beginPath();for(const r of M.L.roads)if(r.k===1)poly(c,r.p);c.stroke();
     c.strokeStyle="#E8C870";c.lineWidth=1.2*z;c.stroke();
+    if(M.L.rails&&M.L.rails.length){c.lineCap="butt";c.strokeStyle="rgba(46,42,38,.75)";c.lineWidth=Math.max(3,2.6*z);c.setLineDash([1.5,4]);c.beginPath();for(const p of M.L.rails)poly(c,p);c.stroke();
+      c.setLineDash([]);c.lineWidth=1.1;c.stroke();c.lineCap="round";}
     c.strokeStyle="#7AA9C9";for(const r of M.L.rivers){c.lineWidth=(r.rank<=5?2.6:r.rank<=8?1.8:1.2)*z;c.beginPath();poly(c,r.p);c.stroke();}
     c.font=`500 10px ${FONT_MONO}`;c.fillStyle="rgba(28,30,26,.45)";
     for(let lon=Math.ceil(lw0/deg)*deg;lon<=le0;lon+=deg){const x=sx(M.proj(lon,ln0)[0]);c.fillText(degLabel(lon,"E","W"),x+3,Math.max(sy(0),0)+16);}
@@ -1381,7 +1399,7 @@ function drawBattle(now){
     ctx.fillStyle="rgba(201,37,44,.25)";for(const u of selected()){ctx.beginPath();ctx.arc(gest.sx+(u.x-lead.x)*cam.s,gest.sy+(u.y-lead.y)*cam.s,R,0,7);ctx.fill();}
   }
   if(gest&&gest.type==="box"){ctx.strokeStyle="#E2B13C";ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.strokeRect(gest.ax,gest.ay,gest.bx-gest.ax,gest.by-gest.ay);ctx.setLineDash([]);}
-  if(gest&&gest.type==="road"&&gest.pts.length>1){ctx.strokeStyle="#8A6A3A";ctx.lineWidth=4;ctx.setLineDash([6,4]);ctx.beginPath();
+  if(gest&&gest.type==="road"&&gest.pts.length>1){ctx.strokeStyle=gest.rail?"#2E2A26":"#8A6A3A";ctx.lineWidth=4;ctx.setLineDash([6,4]);ctx.beginPath();
     gest.pts.forEach((p,k)=>k?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.stroke();ctx.setLineDash([]);}
   if(gest&&gest.type==="line"&&gest.pts.length>1){ctx.strokeStyle=gest.fort?"#6B4A2B":"#C9252C";ctx.lineWidth=4;ctx.globalAlpha=.75;ctx.beginPath();
     gest.pts.forEach((p,k)=>k?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.stroke();ctx.globalAlpha=1;}
@@ -1415,7 +1433,7 @@ cv.addEventListener("pointerdown",e=>{
   if(APP==="front"){gest=e.button===0?{type:"draw",pts:[[wx(px),wy(py)]],px,py}:{type:"pan",lx:px,ly:py,px,py,moved:false};return;}
   if(!G)return;
   if(e.button===1){e.preventDefault();gest={type:"pan",lx:px,ly:py,px,py,moved:true};return;} // middle-drag pans
-  if(tool==="road"&&G.phase!=="over"){gest={type:"road",pts:[[wx(px),wy(py)]],px,py,moved:false};return;}
+  if((tool==="road"||tool==="rail")&&G.phase!=="over"){gest={type:"road",rail:tool==="rail",pts:[[wx(px),wy(py)]],px,py,moved:false};return;}
   const lineMode=e.button===2||tool==="line"||tool==="dig"||e.ctrlKey;
   if(lineMode&&G.sel.size&&G.phase!=="over"){gest={type:"line",fort:tool==="dig",pts:[[wx(px),wy(py)]],px,py,moved:false};return;}
   if(G.placing||G.airMode){gest={type:"pan",lx:px,ly:py,px,py,moved:false};return;}
@@ -1462,7 +1480,7 @@ function endPtr(e){
       else{const h=hitUnit(px,py);if(h&&G.sel.has(h.id))digHere();else digAt(wx(px),wy(py));}}
     else{if(g.moved)orderLine(g.pts);else if(G.sel.size)orderGroup(null,wx(px),wy(py));}
     if(tool==="line")setTool("move");
-  }else if(g.type==="road"){setTool("move");if(g.moved)buildRoad(g.pts);
+  }else if(g.type==="road"){setTool("move");if(g.moved)buildRoad(g.pts,g.rail);
   }else if(g.type==="pan"&&!g.moved){
     if(G.placing)tryPlace(wx(px),wy(py));else if(G.sel.size&&G.phase!=="over")orderGroup(null,wx(px),wy(py));
   }
@@ -1492,7 +1510,7 @@ $("bSwap").onclick=()=>{SWAP=!SWAP;recomputeOwner();};
 $("bStraight").onclick=()=>{FRONT=[[M.w/2,0],[M.w/2,M.h]];recomputeOwner();};
 $("bBack").onclick=()=>toPicker();
 $("bDeploy").onclick=()=>{APP="game";newBattle();showScreen();territoryFrom(G.owner);showBrief("Deployment",null);syncUI();};
-function setTool(t){tool=t;if(G)G.placing=null;for(const [id,v] of [["tMove","move"],["tBox","box"],["tLine","line"],["bDig","dig"],["tRoad","road"]])$(id).setAttribute("aria-pressed",String(t===v));syncUI();}
+function setTool(t){tool=t;if(G)G.placing=null;for(const [id,v] of [["tMove","move"],["tBox","box"],["tLine","line"],["bDig","dig"],["tRoad","road"],["tRail","rail"]])$(id).setAttribute("aria-pressed",String(t===v));syncUI();}
 function setSpeed(s){G.speed=s;G.paused=false;syncUI();}
 $("tMove").onclick=()=>setTool("move");$("tBox").onclick=()=>setTool("box");$("tLine").onclick=()=>{setTool("line");toast(G.sel.size?"Now draw the front line you want them to hold":"Select units first, then draw their line");};
 $("bPause").onclick=()=>{G.paused=!G.paused;syncUI();};
@@ -1513,6 +1531,7 @@ $("bInf").onclick=()=>{G.airMode=null;G.placing=G.placing==="inf"?null:"inf";if(
 $("bArm").onclick=()=>{G.placing=G.placing==="arm"?null:"arm";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place cavalry");syncUI();};
 $("bRecon").onclick=()=>{G.placing=G.placing==="recon"?null:"recon";if(G.placing)toast("Tap where the recon plane should fly");syncUI();};
 $("bDepot").onclick=()=>{G.placing=G.placing==="depot"?null:"depot";if(G.placing)toast("Tap your own ground to build a depot, ideally on a road");syncUI();};
+$("tRail").onclick=()=>{setTool(tool==="rail"?"move":"rail");if(tool==="rail")toast("Draw the railway, starting on your own ground");};
 $("tRoad").onclick=()=>{setTool(tool==="road"?"move":"road");if(tool==="road")toast("Draw the road, starting on your own ground");};
 $("bArt").onclick=()=>{G.placing=G.placing==="art"?null:"art";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place artillery");syncUI();};
 $("bSave").onclick=()=>saveGame(false);
@@ -1571,7 +1590,7 @@ function hud(){
   if(onMap){const c=cellOf(hover[0],hover[1]);
     if(M.water[c])$("terr").textContent="Water · impassable";
     else{const t=TER[M.land[c]],pc=v=>Math.round(v*100)+"%";
-      $("terr").textContent=`${t.name}${M.road[c]?" + road":""}${M.river[c]?" + river":""} · inf ${pc(spdF("inf",c)*(M.river[c]?0.45:1))} · cav ${pc(spdF("arm",c)*(M.river[c]?0.45:1))} · guns ${pc(spdF("art",c)*(M.river[c]?0.45:1))} speed · defenders take ${pc(t.def)}`;}}
+      $("terr").textContent=`${t.name}${M.road[c]?" + road":""}${M.rail[c]?" + railway":""}${M.river[c]?" + river":""} · inf ${pc(spdF("inf",c)*(M.river[c]?0.45:1))} · cav ${pc(spdF("arm",c)*(M.river[c]?0.45:1))} · guns ${pc(spdF("art",c)*(M.river[c]?0.45:1))} speed · defenders take ${pc(t.def)}`;}}
   const cas=G.cas||{dead:[0,0],wnd:[0,0]},fm=v=>Math.round(v).toLocaleString("en-US");
   $("casR").textContent=`✝ ${fm(cas.dead[RED])} ✚ ${fm(cas.wnd[RED])}`;$("casB").textContent=`✝ ${fm(cas.dead[BLK])} ✚ ${fm(cas.wnd[BLK])}`;
   $("forces").textContent=`${n[0]} vs ${n[1]} div`+(enc[0]?` · ${enc[0]} cut off`:"");$("forces").title=`Divisions ${n[0]} vs ${n[1]}`+(enc[0]?`, ${enc[0]} of yours cut off`:"")+(enc[1]?`, ${enc[1]} enemy cut off`:"");
