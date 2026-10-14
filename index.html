@@ -67,11 +67,13 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
 #menu[hidden]{display:none}
 #mapname{font-size:12px;color:var(--plate-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #clock{font-family:var(--f-mono);font-size:11px;color:var(--plate-dim);font-variant-numeric:tabular-nums;padding:0 4px;white-space:nowrap}
-#score{top:max(8px,env(safe-area-inset-top,0px));right:max(8px,env(safe-area-inset-right,0px));padding:6px 8px;width:170px}
+#score{top:max(8px,env(safe-area-inset-top,0px));right:max(8px,env(safe-area-inset-right,0px));padding:6px 8px;width:200px}
 #vpbar{position:relative;flex:1;height:6px;background:#5b5e55;border-radius:1px;overflow:hidden}
 #vpbar i{position:absolute;left:0;top:0;bottom:0;background:var(--red)}
 #vpR,#vpB{font-family:var(--f-mono);font-size:11px;font-variant-numeric:tabular-nums}
 #vpR{color:#F08A86}
+#cas{margin-top:5px;padding-top:5px;border-top:1px solid var(--plate-line);display:grid;gap:2px;font-family:var(--f-mono);font-size:11px;font-variant-numeric:tabular-nums}
+#cas div{display:flex;justify-content:space-between;gap:8px}#cas .r{color:#F08A86}
 #forces{margin-top:4px;font-size:11px;color:var(--plate-dim);font-variant-numeric:tabular-nums;text-align:center}
 #terr{left:max(8px,env(safe-area-inset-left,0px));bottom:max(52px,calc(env(safe-area-inset-bottom,0px) + 52px));padding:4px 7px;font-size:11px;color:var(--plate-dim);pointer-events:none;opacity:.9}
 #bar{left:50%;transform:translateX(-50%);bottom:max(8px,env(safe-area-inset-bottom,0px));padding:4px;display:flex;gap:6px;align-items:center;flex-wrap:nowrap;max-width:calc(100% - 16px);overflow-x:auto;scrollbar-width:none}
@@ -92,9 +94,10 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
 #toast.on{opacity:1}
 @media (max-width:720px){
   #picker h1{font-size:18px} #picker .hint{display:none}
-  #score{width:150px;top:max(50px,calc(env(safe-area-inset-top,0px) + 50px))}
+  #cas{font-size:10px}#cas div{gap:4px}#cas span{white-space:nowrap}
+  #score{width:200px;top:max(50px,calc(env(safe-area-inset-top,0px) + 50px))}
   #bar{flex-wrap:wrap;justify-content:center;overflow:visible}
-  #toast{top:max(96px,calc(env(safe-area-inset-top,0px) + 96px))}
+  #toast{top:max(150px,calc(env(safe-area-inset-top,0px) + 150px))}
   #bar{left:max(8px,env(safe-area-inset-left,0px));right:max(8px,env(safe-area-inset-right,0px));transform:none;max-width:none}
   #pickgo .sep{display:none}
 }
@@ -149,6 +152,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
   <aside class="plate" id="score" hidden title="Towns held: they feed your reserves">
     <div class="row nw"><span id="vpR">0</span><div id="vpbar"><i id="vpfill"></i></div><span id="vpB">0</span></div>
     <div id="forces">—</div>
+    <div id="cas" title="Killed (✝) and wounded (✚) since the battle began"><div><span class="r">Red</span><span id="casR">✝ 0 ✚ 0</span></div><div><span>Black</span><span id="casB">✝ 0 ✚ 0</span></div></div>
   </aside>
   <div class="plate" id="terr" hidden></div>
   <nav class="plate" id="bar" aria-label="Orders" hidden>
@@ -496,7 +500,7 @@ function newBattle(){
   G={t:0,phase:"setup",owner:Int8Array.from(OWN0),units:[],nid:1,res:[4,4],inc:[0,0],speed:1,paused:false,sel:new Set(),
      fx:[],winner:null,ai:0,aiArm:0,supT:0,ownerDirty:true,sup:[new Uint8Array(NC),new Uint8Array(NC)],stamp:0,
      claimR:new Int32Array(NC),claimB:new Int32Array(NC),vp:[0,0],placing:null,hold:[0,0],src:[[],[]],saveT:0,
-     ter:new Float32Array(NC),terDirty:true,air:[],airMode:null,aiAir:0,works:[]};
+     ter:new Float32Array(NC),terDirty:true,air:[],airMode:null,aiAir:0,works:[],cas:{dead:[0,0],wnd:[0,0]}};
   for(let c=0;c<NC;c++){if(M.water[c])continue;const i=c%GW,j=Math.floor(c/GW);if(i===0||j===0||i===GW-1||j===GH-1)G.src[G.owner[c]].push(c);}
   FIELD=field();
   const P=extendToEdges(FRONT),seg=[0];for(let k=1;k<P.length;k++)seg.push(seg[k-1]+Math.hypot(P[k][0]-P[k-1][0],P[k][1]-P[k-1][1]));
@@ -590,9 +594,11 @@ function setOrder(u,x,y,dg){
 }
 function aiOrder(u,x,y){if(u.tx!=null&&Math.hypot(u.tx-x,u.ty-y)<1.5*K)return;setOrder(u,x,y);}
 
+/* casualties: a division is about 15,000 men; every point of strength lost is 150 men, roughly one killed for every three wounded */
+const MEN=150,KILLED=0.27;
 function step(dt){
   G.t+=dt;
-  const U=G.units,ER=ENGAGE*K;
+  const U=G.units,ER=ENGAGE*K,s0=new Map(U.map(u=>[u.id,u.str]));
   for(const u of U)u.foes=[];
   for(let a=0;a<U.length;a++)for(let b=a+1;b<U.length;b++){
     const u=U[a],v=U[b];if(u.side===v.side)continue;
@@ -614,6 +620,8 @@ function step(dt){
     if(!u.sup)u.str-=0.55*dt;else if(!u.eng)u.str=Math.min(100,u.str+(u.rest?2.2:1.1)*dt);
   }
   bombard(dt);
+  if(!G.cas)G.cas={dead:[0,0],wnd:[0,0]};
+  for(const u of U){const loss=s0.get(u.id)-Math.max(0,u.str);if(loss>0){G.cas.dead[u.side]+=loss*MEN*KILLED;G.cas.wnd[u.side]+=loss*MEN*(1-KILLED);}}
   for(const u of U)if(u.str<=0){G.fx.push({k:"die",x:u.x,y:u.y,t:0,side:u.side});G.sel.delete(u.id);}
   G.units=G.units.filter(u=>u.str>0);
 
@@ -759,7 +767,8 @@ function checkEnd(){
   else if(G.hold[BLK]>=HQ_HOLD){w=BLK;why=`Black took and held ${ownHQ.name}, your headquarters.`;}
   else if(!has[BLK]&&G.res[BLK]<1){w=RED;why="Black has no divisions left.";}
   else if(!has[RED]&&G.res[RED]<1){w=BLK;why="You have no divisions left.";}
-  if(w!==null){G.winner=w;G.phase="over";clearSave();showBrief(w===RED?"Victory":"Defeat",why);}
+  if(w!==null){G.winner=w;G.phase="over";clearSave();const c=G.cas||{dead:[0,0],wnd:[0,0]},fm=v=>Math.round(v).toLocaleString("en-US");
+    showBrief(w===RED?"Victory":"Defeat",`${why} The battle cost you ${fm(c.dead[RED])} killed and ${fm(c.wnd[RED])} wounded; Black lost ${fm(c.dead[BLK])} killed and ${fm(c.wnd[BLK])} wounded.`);}
 }
 
 /* ---------- Black AI ---------- */
@@ -934,7 +943,7 @@ function saveGame(silent){
     hq:M.hq.map(t=>t&&{name:t.name,x:t.x,y:t.y,c:t.c,synthetic:!!t.synthetic}),
     g:{t:G.t,phase:G.phase,owner:b64(G.owner),res:G.res,inc:G.inc,hold:G.hold,speed:G.speed,nid:G.nid,src:G.src,
        ter:b64(Uint8Array.from(G.ter,v=>Math.round(v*255))),air:G.air.map(a=>({...a})),
-       units:G.units.map(u=>({id:u.id,side:u.side,type:u.type,x:u.x,y:u.y,str:u.str,tx:u.tx,ty:u.ty,path:u.path,ent:u.ent,rest:u.rest,tgt:u.tgt,garrison:!!u.garrison,dig:!!u.dig})),works:G.works,diff:DIFF}};
+       units:G.units.map(u=>({id:u.id,side:u.side,type:u.type,x:u.x,y:u.y,str:u.str,tx:u.tx,ty:u.ty,path:u.path,ent:u.ent,rest:u.rest,tgt:u.tgt,garrison:!!u.garrison,dig:!!u.dig})),works:G.works,cas:G.cas,diff:DIFF}};
   try{localStorage.setItem(SAVE_KEY,JSON.stringify(snap));if(!silent)toast("Battle saved in this browser");refreshContinue();return true;}
   catch(e){if(!silent)toast("This browser would not store the save");return false;}
 }
@@ -954,7 +963,7 @@ async function loadGame(){
     G={t:g.t,phase:g.phase,owner:unb64(g.owner),units:[],nid:g.nid,res:g.res,inc:g.inc,speed:g.speed,paused:true,sel:new Set(),
        fx:[],winner:null,ai:0,aiArm:0,supT:0,ownerDirty:true,sup:[new Uint8Array(NC),new Uint8Array(NC)],stamp:0,
        claimR:new Int32Array(NC),claimB:new Int32Array(NC),vp:[0,0],placing:null,hold:g.hold,src:g.src,saveT:0,
-       ter:new Float32Array(NC),terDirty:true,air:g.air||[],airMode:null,aiAir:0,works:g.works||[]};
+       ter:new Float32Array(NC),terDirty:true,air:g.air||[],airMode:null,aiAir:0,works:g.works||[],cas:g.cas||{dead:[0,0],wnd:[0,0]}};
     if(g.ter){const q=new Uint8Array(unb64(g.ter).buffer);for(let c=0;c<NC&&c<q.length;c++)G.ter[c]=q[c]/255;}
     for(const u of g.units)G.units.push(Object.assign({sup:true,eng:0,hit:0,foes:[]},u));
     APP="game";resetCam();FIELD=field();buildCosts();computeSupply();updateVP();showScreen();
@@ -1329,6 +1338,8 @@ function hud(){
     if(M.water[c])$("terr").textContent="Water · impassable";
     else{const t=TER[M.land[c]],pc=v=>Math.round(v*100)+"%";
       $("terr").textContent=`${t.name}${M.road[c]?" + road":""}${M.river[c]?" + river":""} · inf ${pc(spdF("inf",c)*(M.river[c]?0.45:1))} · cav ${pc(spdF("arm",c)*(M.river[c]?0.45:1))} · guns ${pc(spdF("art",c)*(M.river[c]?0.45:1))} speed · defenders take ${pc(t.def)}`;}}
+  const cas=G.cas||{dead:[0,0],wnd:[0,0]},fm=v=>Math.round(v).toLocaleString("en-US");
+  $("casR").textContent=`✝ ${fm(cas.dead[RED])} ✚ ${fm(cas.wnd[RED])}`;$("casB").textContent=`✝ ${fm(cas.dead[BLK])} ✚ ${fm(cas.wnd[BLK])}`;
   $("forces").textContent=`${n[0]} vs ${n[1]} div`+(enc[0]?` · ${enc[0]} cut off`:"");$("forces").title=`Divisions ${n[0]} vs ${n[1]}`+(enc[0]?`, ${enc[0]} of yours cut off`:"")+(enc[1]?`, ${enc[1]} enemy cut off`:"");
   $("reserve").firstChild.textContent=`${G.res[RED]} RES`;$("resfill").style.width=(G.phase==="battle"?G.inc[RED]*100:0)+"%";
   const di=G.res[RED]<1||G.phase==="over",da=G.res[RED]<2||G.phase==="over";if($("bInf").disabled!==di)$("bInf").disabled=di;if($("bArm").disabled!==da)$("bArm").disabled=da;if($("bArt").disabled!==da)$("bArt").disabled=da;

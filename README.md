@@ -21,6 +21,7 @@ Open `index.html` through any static web server, for example `python3 -m http.se
 - Infantry, cavalry and artillery take ground around them, and front lines redraw live. Encircled troops lose strength.
 - Orders route around water, rough ground and enemy troops. Roads speed up marches. Drag in a curve to set your own route.
 - **Line** spreads selected units along a front you draw. **Dig** lets you draw a defence line for them to dig.
+- Running count of killed and wounded for both sides (a division is about 15,000 men).
 - Easy / Normal / Hard opponent. Saves in your browser.
 
 ## Controls
