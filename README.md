@@ -22,6 +22,7 @@ Open `index.html` through any static web server, for example `python3 -m http.se
 - Orders route around water, rough ground and enemy troops. Roads speed up marches. Drag in a curve to set your own route.
 - **Line** spreads selected units along a front you draw. **Dig** lets you draw a defence line for them to dig.
 - Running count of killed and wounded for both sides.
+- Supply: build ammunition depots (best on roads) and draw your own field roads; troops near a depot restock fast.
 - Ammunition and fatigue: fighting burns ammo that comes up the supply line; marching, fighting and digging tire troops. Relieve a tired unit by dragging a fresh one onto it.
 - Easy / Normal / Hard opponent. Saves in your browser.
 
