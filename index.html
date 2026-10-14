@@ -518,7 +518,7 @@ function newBattle(){
   }
   const h=M.hq[BLK];if(h){for(const d of [-3,3]){const q=nearestCell(h.x+d*K,h.y,c=>!M.water[c]&&G.owner[c]===BLK);if(q)addUnit(BLK,"inf",q[0],q[1]).garrison=true;}}
   if(!M.road0)M.road0=M.road.slice();else M.road.set(M.road0); // field roads from the last battle are gone
-  for(const s of [RED,BLK])for(const f of [1/3,2/3]){const p=at(f*len),q=intoSide(p[0],p[1],s,14*K);if(q){const r=snapRoad(q[0],q[1],s);addDepot(s,r[0],r[1]);}}
+  seedDepots();
   buildCosts();computeSupply();updateVP();aiSpendReserves(true);
 }
 function scar(x,y,r,amt){ // churn the ground: craters, rubble, burnt fields
@@ -690,12 +690,18 @@ function logistics(dt){
 }
 /* ammunition depots: troops within 16 km of one of their depots (or their HQ) restock fast; a depot off the road network works at under half rate.
    Depots fall if their ground is taken, and enemy guns shell them. Field roads drawn by the player speed marches and feed depots once finished. */
-const DEPOT={r:16,cost:2,max:8,hp:100,shell:22,offRoad:0.45},ROADB={speed:3,per:25};
+const DEPOT={r:16,cost:2,max:10,hp:100,shell:22,offRoad:0.45},ROADB={speed:3,per:25};
 function nearRoad(x,y,r){const n=Math.ceil(r/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);
   for(let j=j0-n;j<=j0+n;j++)for(let i=i0-n;i<=i0+n;i++){if(i<0||j<0||i>=GW||j>=GH)continue;if(M.road[j*GW+i])return true;}return false;}
 function snapRoad(x,y,s){const n=Math.ceil(6*K/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);let best=null,bd=1e9;
   for(let j=j0-n;j<=j0+n;j++)for(let i=i0-n;i<=i0+n;i++){if(i<0||j<0||i>=GW||j>=GH)continue;const c=j*GW+i;if(!M.road[c]||M.water[c]||G.owner[c]!==s)continue;
     const d=Math.hypot(cx(c)-x,cy(c)-y);if(d<bd){bd=d;best=[cx(c),cy(c)];}}return best||[x,y];}
+function seedDepots(){ // starting depots spread along the whole front, about one per 25 km (3 to 6 per side), on a road where one is near
+  const P=extendToEdges(FRONT),seg=[0];for(let k=1;k<P.length;k++)seg.push(seg[k-1]+Math.hypot(P[k][0]-P[k-1][0],P[k][1]-P[k-1][1]));
+  const len=seg[seg.length-1],at=d=>{let s=1;while(s<seg.length-1&&seg[s]<d)s++;const t=(d-seg[s-1])/((seg[s]-seg[s-1])||1);return [P[s-1][0]+(P[s][0]-P[s-1][0])*t,P[s-1][1]+(P[s][1]-P[s-1][1])*t];};
+  const n=clamp(Math.round(len/K/25),3,6);
+  for(const s of [RED,BLK])for(let k=0;k<n;k++){const p=at((k+.5)/n*len),q=intoSide(p[0],p[1],s,11*K);if(q){const r=snapRoad(q[0],q[1],s);addDepot(s,r[0],r[1]);}}
+}
 function addDepot(s,x,y){const d={id:G.nid++,s,x,y,hp:DEPOT.hp};G.depots.push(d);return d;}
 const depotEff=d=>nearRoad(d.x,d.y,1.5*K)?1:DEPOT.offRoad;
 function supplyAt(u){let best=0;const R=DEPOT.r*K;
@@ -1048,6 +1054,7 @@ async function loadGame(){
     if(g.ter){const q=new Uint8Array(unb64(g.ter).buffer);for(let c=0;c<NC&&c<q.length;c++)G.ter[c]=q[c]/255;}
     for(const u of g.units)G.units.push(Object.assign({sup:true,eng:0,hit:0,foes:[],ammo:100,fat:0,relieve:0},u));
     M.road0=M.road.slice();for(const r of G.roads)if(r.done>=r.len)rasterRoad(r);
+    if(!g.depots)seedDepots(); // saves from before depots existed
     APP="game";resetCam();FIELD=field();buildCosts();computeSupply();updateVP();showScreen();
     if(G.phase==="setup")showBrief("Deployment",null);else toast("Battle loaded and paused. Press 1× to resume.");
     syncUI();
