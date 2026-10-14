@@ -157,7 +157,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
   <div class="plate" id="terr" hidden></div>
   <nav class="plate" id="bar" aria-label="Orders" hidden>
     <div class="grp" role="group" aria-label="Map tool">
-      <button id="tMove" aria-pressed="true" title="Move: drag a unit to send it, drag the map to pan">Move</button>
+      <button id="tMove" aria-pressed="true" title="Move: drag a unit to send it; with a mouse, drag empty ground to box-select (middle-drag or arrow keys pan)">Move</button>
       <button id="tBox" aria-pressed="false" title="Box: drag a box round units to select them (or Shift+drag)">Box</button>
       <button id="tLine" aria-pressed="false" title="Line: draw a front for the selected units to spread along (or right-drag)">Line</button>
       <button id="bDig" title="Dig: draw a defence line for the selected units, or press twice to dig in where they stand (D)">Dig</button>
@@ -191,7 +191,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li>Fighting and shelling scar the ground: cratered land slows movement, gives a little cover, and ruined towns feed fewer reserves.</li>
       <li id="winrule"></li>
     </ul>
-    <p style="font-size:12px;color:var(--plate-dim)"><kbd>Space</kbd> pause · <kbd>A</kbd> select all · <kbd>Shift</kbd>+drag box · wheel or pinch to zoom</p>
+    <p style="font-size:12px;color:var(--plate-dim)"><kbd>Space</kbd> pause · <kbd>A</kbd> select all · mouse: drag on empty ground to box-select, middle-drag or arrow keys to pan · wheel or pinch to zoom · touch: one finger pans, use <b>Box</b> to select</p>
     <div class="row" id="diffrow" role="group" aria-label="Difficulty" style="margin-bottom:10px"><span style="font-size:12px;color:var(--plate-dim);margin-right:4px">Opponent</span>
       <button data-d="easy" title="Black reacts slowly, hits softer and earns fewer reserves">Easy</button><button data-d="normal" title="The original opponent">Normal</button><button data-d="hard" title="Black reacts fast and earns more">Hard</button></div>
     <div class="row"><button class="go" id="bStart">Start battle</button><button id="bClose" hidden>Close</button><button id="bRestart" hidden>Replay this map</button><button id="bNewMap" hidden>Other map</button></div>
@@ -1197,12 +1197,13 @@ cv.addEventListener("pointerdown",e=>{
   if(APP==="pick"){gest={type:"pan",lx:px,ly:py,px,py,moved:false};return;}
   if(APP==="front"){gest=e.button===0?{type:"draw",pts:[[wx(px),wy(py)]],px,py}:{type:"pan",lx:px,ly:py,px,py,moved:false};return;}
   if(!G)return;
+  if(e.button===1){e.preventDefault();gest={type:"pan",lx:px,ly:py,px,py,moved:true};return;} // middle-drag pans
   const lineMode=e.button===2||tool==="line"||tool==="dig"||e.ctrlKey;
   if(lineMode&&G.sel.size&&G.phase!=="over"){gest={type:"line",fort:tool==="dig",pts:[[wx(px),wy(py)]],px,py,moved:false};return;}
   if(G.placing||G.airMode){gest={type:"pan",lx:px,ly:py,px,py,moved:false};return;}
   const u=G.phase!=="over"&&hitUnit(px,py);
   if(u){const was=G.sel.has(u.id);if(!was){if(!e.shiftKey)G.sel.clear();G.sel.add(u.id);}gest={type:"drag",unit:u,px,py,sx:px,sy:py,moved:false,was,shift:e.shiftKey,pts:[[u.x,u.y]]};syncUI();return;}
-  if(e.shiftKey||tool==="box"){gest={type:"box",ax:px,ay:py,bx:px,by:py,add:e.shiftKey};return;}
+  if(e.shiftKey||tool==="box"||(e.pointerType==="mouse"&&e.button===0)){gest={type:"box",ax:px,ay:py,bx:px,by:py,add:e.shiftKey};return;}
   gest={type:"pan",lx:px,ly:py,px,py,moved:false};
 });
 cv.addEventListener("pointermove",e=>{
@@ -1312,6 +1313,7 @@ window.addEventListener("keydown",e=>{
   if(APP!=="game"||!G||e.target.tagName==="INPUT")return;
   if(e.target.closest&&e.target.closest("button")&&e.key===" ")return;
   if(e.key===" "){e.preventDefault();G.paused=!G.paused;syncUI();}
+  else if(e.key.startsWith("Arrow")){e.preventDefault();const d=80;panBy(e.key==="ArrowLeft"?d:e.key==="ArrowRight"?-d:0,e.key==="ArrowUp"?d:e.key==="ArrowDown"?-d:0);}
   else if(e.key==="1")setSpeed(1);else if(e.key==="2")setSpeed(2);else if(e.key==="3")setSpeed(4);
   else if(e.key==="a"||e.key==="A"){G.sel=new Set(own().map(u=>u.id));syncUI();}
   else if(e.key==="Escape"){G.sel.clear();G.placing=null;G.airMode=null;gest=null;syncUI();}
@@ -1328,7 +1330,7 @@ function syncUI(){
   $("selinfo").textContent=sel.length?`${sel.length} sel · ${Math.round(sel.reduce((a,u)=>a+u.str,0)/sel.length)}%`:(G.placing?`placing ${T[G.placing].label.toLowerCase()}`:"");
   $("bInf").setAttribute("aria-pressed",String(G.placing==="inf"));$("bArm").setAttribute("aria-pressed",String(G.placing==="arm"));$("bArt").setAttribute("aria-pressed",String(G.placing==="art"));
   $("bInf").disabled=G.res[RED]<1||G.phase==="over";$("bArm").disabled=G.res[RED]<2||G.phase==="over";
-  cv.style.cursor=G.airMode?"crosshair":G.placing?"cell":tool==="move"?"grab":"crosshair";
+  cv.style.cursor=G.airMode?"crosshair":G.placing?"cell":tool==="move"?"default":"crosshair";
 }
 function hud(){
   if(APP==="front"){cv.style.cursor="crosshair";return;}
