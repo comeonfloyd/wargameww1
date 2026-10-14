@@ -172,7 +172,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
     <div class="sep"></div>
     <div class="grp">
       <div id="reserve" title="Reserves: earned from time and the towns you hold">4 RES<small><i id="resfill"></i></small></div>
-      <button id="bInf" title="Place an infantry division (1 reserve)">+Inf</button>
+      <button id="bInf" title="Place an infantry division (1 reserve). In battle, reinforcements arrive by rail at major cities you hold">+Inf</button>
       <button id="bArm" title="Place a cavalry division (2 reserves)">+Cav</button>
       <button id="bArt" title="Place an artillery battery (2 reserves)">+Art</button>
       <button id="bDepot" title="Build an ammunition depot (2 reserves): fast resupply within 16 km, full rate only on a road">+Depot</button>
@@ -188,7 +188,8 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Defence lines:</b> select units, press <b>Dig</b> (<kbd>D</kbd>) and draw a line on the map: the selected units spread out along it and dig a trench that follows your line. Or tap a spot instead: they march there and dig in on arrival. Press <b>Dig</b> twice to dig in right where they stand. Trenches grow while the unit is still and out of combat (about half a minute for infantry; cavalry and artillery dig slowly). Troops in their own trenches take up to 45% less damage, and enemies crossing them are slowed. Shelling and fighting wreck trenches, and captured ones are only half as good. The longer the stretch each unit has to dig, the slower it goes; planned trench shows as a dashed line until work starts. You can draw defence lines during deployment too.</li>
       <li><b>Ammunition and fatigue:</b> the bars under a selected unit show ammunition (yellow) and freshness (blue). Fighting burns ammunition, which is restocked from depots (see Supply); out of ammunition, troops fight at a third of their strength and guns fall silent. Marching, fighting and digging tire troops, and tired troops move slower, hit softer and take more losses. They recover by resting, fastest well behind the line.</li>
       <li><b>Fog of war:</b> your own ground is always clear, but beyond the front you only see enemies within sight of your troops, depots and HQ (about 14 km; cavalry 20 km). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly, once the battle has started) to scout behind the lines: the strip it flies over stays visible for a while; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
-      <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (crates) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
+      <li><b>Reinforcements:</b> before the battle you may deploy anywhere on your ground. Once it starts, new divisions come up by rail: place them within 7 km of a major city (2+ points) or your HQ that you hold and supply; these are circled while you place. Black's reinforcements arrive the same way, so taking its cities slows them down.</li>
+      <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
       <li>Units take ground around them. Troops cut off from their own map edges and HQ wither. Water is impassable.</li>
@@ -992,6 +993,7 @@ function aiSpendReserves(initial){
     for(let n=0;n<12;n++){const c=F[Math.floor(Math.random()*F.length)];
       const cnt=G.units.filter(u=>u.side===BLK&&Math.hypot(u.x-cx(c),u.y-cy(c))<25*K).length;if(cnt<bc){bc=cnt;best=c;}}
     let [x,y]=awayFromRed(best,(initial?12:18)*K);
+    if(!initial){const R=railheads(BLK);if(R.length){let bt=R[0],bd=1e9;for(const t of R){const d=Math.hypot(t.x-cx(best),t.y-cy(best));if(d<bd){bd=d;bt=t;}}x=bt.x+(Math.random()-.5)*6*K;y=bt.y+(Math.random()-.5)*6*K;}}
     if(hq&&G.units.some(u=>u.side===RED&&Math.hypot(u.x-hq.x,u.y-hq.y)<50*K)){x=hq.x+(Math.random()-.5)*10*K;y=hq.y+(Math.random()-.5)*10*K;}
     const p=nearestCell(x,y,c=>!M.water[c]&&G.owner[c]===BLK&&G.sup[BLK][c]===1);if(!p)return;
     addUnit(BLK,type,p[0],p[1]);G.res[BLK]-=T[type].cost;
@@ -1063,7 +1065,11 @@ function orderLine(pts,fortify){
   G.lastLine={pts,t:performance.now()};
   toast(`${grp.length} unit${grp.length>1?"s":""} ordered onto the line`);
 }
-function placeOK(x,y){const c=cellOf(x,y);return !M.water[c]&&G.owner[c]===RED&&G.sup[RED][c]===1&&(G.phase!=="setup"||setupSafe(x,y))&&!G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<10*K);}
+function placeOK(x,y){const c=cellOf(x,y);return (G.placing==='depot'||railOK(RED,x,y))&&!M.water[c]&&G.owner[c]===RED&&G.sup[RED][c]===1&&(G.phase!=="setup"||setupSafe(x,y))&&!G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<10*K);}
+/* reinforcements arrive by rail: once the battle is on, new divisions detrain at a major city (2+ points) or the HQ that the side holds and supplies */
+const RAIL=7;
+function railheads(s){return M.towns.filter(t=>(t.vp>=2||t.hq===s)&&G.owner[t.c]===s&&G.sup[s][t.c]);}
+function railOK(s,x,y){if(G.phase!=="battle")return true;const R=railheads(s);return !R.length||R.some(t=>Math.hypot(t.x-x,t.y-y)<RAIL*K);}
 function tryPlace(x,y){
   if(G.placing==="depot"){placeDepot(x,y);return;}
   if(G.placing==="recon"){if(launchRecon(RED,x,y))G.placing=null;syncUI();return;}
@@ -1074,6 +1080,7 @@ function tryPlace(x,y){
   if(M.water[c]){toast("Troops can't be placed on water");return;}
   if(G.owner[c]!==RED||!G.sup[RED][c]){toast("Place troops on your own supplied ground");return;}
   if(G.phase==="setup"&&!setupSafe(x,y)){toast("Too close to the front line");return;}
+  if(!railOK(RED,x,y)){toast("Reinforcements arrive by rail: place them at one of your major cities (circled)");return;}
   if(G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<10*K)){toast("Too close to the enemy");return;}
   const u=addUnit(RED,type,x,y);G.res[RED]-=cost;G.sel.clear();G.sel.add(u.id);
   if(G.res[RED]<cost)G.placing=null;
@@ -1151,11 +1158,14 @@ function drawRoadsDepots(){
     ctx.stroke();
     if(cut){ctx.setLineDash([4,5]);ctx.strokeStyle="rgba(138,106,58,.65)";ctx.beginPath();ctx.moveTo(sx(cut[0]),sy(cut[1]));for(;k<r.pts.length;k++)ctx.lineTo(sx(r.pts[k][0]),sy(r.pts[k][1]));ctx.stroke();ctx.setLineDash([]);}
     ctx.lineCap="butt";}
-  const z=Math.max(7,1.4*K*s);
+  const z=Math.max(10,1.9*K*s);
   for(const d of G.depots){const x=sx(d.x),y=sy(d.y);if(x<-200||y<-200||x>VW+200||y>VH+200)continue;if(FOG&&d.s!==RED&&!d.known)continue;
     if(d.s===RED){ctx.strokeStyle="rgba(201,37,44,.22)";ctx.lineWidth=1;ctx.setLineDash([3,6]);ctx.beginPath();ctx.arc(x,y,DEPOT.r*K*s,0,7);ctx.stroke();ctx.setLineDash([]);}
-    ctx.fillStyle=d.s===RED?"#9E3A2E":"#3A3C36";ctx.fillRect(x-z,y-z*0.75,2*z,1.5*z);ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.2;ctx.strokeRect(x-z,y-z*0.75,2*z,1.5*z);
-    ctx.beginPath();ctx.moveTo(x-z,y-z*0.75);ctx.lineTo(x+z,y+z*0.75);ctx.moveTo(x+z,y-z*0.75);ctx.lineTo(x-z,y+z*0.75);ctx.stroke();
+    // a stack of three shells on a pallet in the side's colour
+    ctx.fillStyle=d.s===RED?"#C9252C":"#1C1E1A";ctx.strokeStyle="#E6E9DD";ctx.lineWidth=1.2;ctx.fillRect(x-z*1.1,y+z*0.45,2.2*z,z*0.45);ctx.strokeRect(x-z*1.1,y+z*0.45,2.2*z,z*0.45);
+    const sw=z*0.5;for(const k of [-1,0,1]){const bx=x+k*z*0.68,h=k?z*1.15:z*1.45,top=y+z*0.45-h;
+      ctx.beginPath();ctx.moveTo(bx-sw/2,y+z*0.45);ctx.lineTo(bx-sw/2,top+sw*0.6);ctx.quadraticCurveTo(bx,top-sw*0.5,bx+sw/2,top+sw*0.6);ctx.lineTo(bx+sw/2,y+z*0.45);ctx.closePath();
+      ctx.fillStyle="#C9A24A";ctx.fill();ctx.strokeStyle="#3A2E1A";ctx.lineWidth=1;ctx.stroke();}
     if(depotEff(d)<1){ctx.fillStyle="#E2B13C";ctx.font=`600 ${Math.round(z*1.2)}px ${FONT_MONO}`;ctx.textAlign="center";ctx.fillText("!",x+z*1.6,y+z*0.4);ctx.textAlign="left";}
     if(d.hp<DEPOT.hp){ctx.fillStyle="rgba(28,30,26,.6)";ctx.fillRect(x-z,y+z,2*z,3);ctx.fillStyle="#E2593C";ctx.fillRect(x-z,y+z,2*z*Math.max(0,d.hp)/DEPOT.hp,3);}}
 }
@@ -1375,6 +1385,8 @@ function drawBattle(now){
     gest.pts.forEach((p,k)=>k?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.stroke();ctx.setLineDash([]);}
   if(gest&&gest.type==="line"&&gest.pts.length>1){ctx.strokeStyle=gest.fort?"#6B4A2B":"#C9252C";ctx.lineWidth=4;ctx.globalAlpha=.75;ctx.beginPath();
     gest.pts.forEach((p,k)=>k?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.stroke();ctx.globalAlpha=1;}
+  if(G.placing&&T[G.placing]&&G.phase==="battle"){ctx.strokeStyle="rgba(201,37,44,.8)";ctx.lineWidth=2;ctx.setLineDash([5,4]);
+    for(const t of railheads(RED)){ctx.beginPath();ctx.arc(sx(t.x),sy(t.y),RAIL*K*cam.s,0,7);ctx.stroke();}ctx.setLineDash([]);}
   if(G.placing==='recon'&&hover){ctx.strokeStyle='#C9252C';ctx.lineWidth=1.5;ctx.setLineDash([3,4]);ctx.beginPath();ctx.arc(sx(hover[0]),sy(hover[1]),INTEL.plane.r*K*cam.s,0,7);ctx.stroke();ctx.setLineDash([]);}
   else if(G.placing&&hover){const ok=placeOK(hover[0],hover[1]);ctx.strokeStyle=ok?"#C9252C":"#7A7D72";ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(sx(hover[0]),sy(hover[1]),R,0,7);ctx.stroke();ctx.setLineDash([]);}
   scaleBar();
@@ -1497,12 +1509,12 @@ function digIn(){if(!G.sel.size){toast("Select units first, then Dig");return;}
   if(tool==="dig"){setTool("move");digHere();return;}
   setTool("dig");toast("Draw a defence line, tap where they should march and dig in, or press Dig again to dig in where they stand");}
 $("bDig").onclick=digIn;
-$("bInf").onclick=()=>{G.airMode=null;G.placing=G.placing==="inf"?null:"inf";if(G.placing)toast("Tap your own ground to place infantry");syncUI();};
-$("bArm").onclick=()=>{G.placing=G.placing==="arm"?null:"arm";if(G.placing)toast("Tap your own ground to place cavalry");syncUI();};
+$("bInf").onclick=()=>{G.airMode=null;G.placing=G.placing==="inf"?null:"inf";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place infantry");syncUI();};
+$("bArm").onclick=()=>{G.placing=G.placing==="arm"?null:"arm";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place cavalry");syncUI();};
 $("bRecon").onclick=()=>{G.placing=G.placing==="recon"?null:"recon";if(G.placing)toast("Tap where the recon plane should fly");syncUI();};
 $("bDepot").onclick=()=>{G.placing=G.placing==="depot"?null:"depot";if(G.placing)toast("Tap your own ground to build a depot, ideally on a road");syncUI();};
 $("tRoad").onclick=()=>{setTool(tool==="road"?"move":"road");if(tool==="road")toast("Draw the road, starting on your own ground");};
-$("bArt").onclick=()=>{G.placing=G.placing==="art"?null:"art";if(G.placing)toast("Tap your own ground to place artillery");syncUI();};
+$("bArt").onclick=()=>{G.placing=G.placing==="art"?null:"art";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place artillery");syncUI();};
 $("bSave").onclick=()=>saveGame(false);
 $("bFog").setAttribute("aria-pressed",String(FOG));
 $("bFog").onclick=()=>{FOG=!FOG;try{localStorage.setItem("front1914.fog",FOG?"1":"0");}catch(e){}$("bFog").setAttribute("aria-pressed",String(FOG));toast(FOG?"Fog of war on":"Fog of war off: every enemy is shown");};
