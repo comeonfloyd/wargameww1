@@ -193,6 +193,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Fog of war:</b> your own ground is always clear, but beyond the front you only see enemies within sight of your troops, depots and HQ (about 14 km; cavalry 20 km). Enemies that slip out of sight leave a faded ghost where they were last seen. Your guns only fire at enemies someone can see. Send a <b>Recon</b> plane (1 reserve, tap where it should fly, once the battle has started) to scout behind the lines: the strip it flies over stays visible for a while; enemy guns can shoot it down. Black flies recon too. Turn fog off in the ☰ menu.</li>
       <li><b>Reinforcements:</b> before the battle you may deploy anywhere on your ground. Once it starts, new divisions come up by rail: place them within 7 km of a major city (2+ points) or your HQ that you hold and supply; these are circled while you place. Black's reinforcements arrive the same way, so taking its cities slows them down.</li>
       <li><b>Roads or Direct</b> (button next to All, or R): with <b>Roads</b> your troops take roads and railways when that is quicker, even if it means a detour. With <b>Direct</b> they march straight across country, keeping their line, and only go round water.</li>
+      <li><b>Trench warfare:</b> dug-in troops are hard to shift. Their machine guns cut down units advancing on them, trenches and wire soak up fire and slow attackers, troops assaulting tire quickly, and ground in contact changes hands slowly. Break a line by shelling it with artillery first, attacking with fresh troops, or going round it.</li>
       <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, about twice as fast as on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
       <li><b>Ships:</b> towns on a sea or lake shore are ports (⚓). Select troops, press <b>Ship</b> and tap a shore on the same water: they march to your nearest port, board and sail, then land, even on the enemy's coast (1 reserve per 3 divisions). Troops landing on ground that isn't yours arrive tired and short of ammunition, and guns that can see a transport will fire on it. Black lands troops behind your coast too. Try the East Prussia map.</li>
       <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
@@ -628,6 +629,7 @@ function aiOrder(u,x,y){if(u.sea)return;if(u.tx!=null&&Math.hypot(u.tx-x,u.ty-y)
 /* casualties: a division is about 15,000 men. Strength is fighting power, not head count: most of a loss is shock, disorder and
    stragglers who come back, so only about 30% of it is real casualties (45 men per point), roughly one killed for every three wounded */
 const MEN=45,KILLED=0.27;
+const STALE={mg:1.4,cover:0.7,wire:0.7,claimEng:0.35,ent:0.06}; // trench-war tuning: strong defence, costly attacks, slow-moving lines
 function step(dt){
   G.t+=dt;
   const U=G.units,ER=ENGAGE*K,s0=new Map(U.map(u=>[u.id,u.str]));
@@ -643,8 +645,9 @@ function step(dt){
     u.ammo=Math.max(0,u.ammo-SUP.burn[u.type]*dt);
     if(Math.random()<dt*2)scar((u.x+u.foes[0].x)/2,(u.y+u.foes[0].y)/2,2.5*K,0.05);
     for(const v of u.foes){
-      const vc=cellOf(v.x,v.y),def=(1-0.4*v.ent)*TER[M.land[vc]].def*(M.city[vc]&&M.land[vc]!==6?0.8:1)*(1-0.15*G.ter[vc])*(1-0.45*(v.cover||0))*(u.type==="arm"?1-0.6*(v.cover||0)-0.3*v.ent:1)*(1+0.3*v.fat/100)*T[v.type].def;
-      dmg.set(v,(dmg.get(v)||0)+fire*def);
+      const vc=cellOf(v.x,v.y),def=(1-0.4*v.ent)*TER[M.land[vc]].def*(M.city[vc]&&M.land[vc]!==6?0.8:1)*(1-0.15*G.ter[vc])*(1-STALE.cover*(v.cover||0))*(u.type==="arm"?1-0.6*(v.cover||0)-0.3*v.ent:1)*(1+0.3*v.fat/100)*T[v.type].def;
+      const mg=!u.path&&v.path?1+STALE.mg*Math.max(u.cover||0,0.6*u.ent):1; // machine guns: dug-in defenders cut down troops advancing on them
+      dmg.set(v,(dmg.get(v)||0)+fire*def*mg);
       if(Math.random()<dt*0.9)G.fx.push({k:"shot",x:v.x+(Math.random()-.5)*3*K,y:v.y+(Math.random()-.5)*3*K,t:0,side:u.side});
     }
   }
@@ -661,12 +664,12 @@ function step(dt){
   stepSea(dt);
   for(const u of G.units){
     if(atSea(u)||u.sea&&u.sea.stage==="board")continue;
-    if(!u.path||!u.path.length){u.path=null;u.tx=u.ty=null;u.ent=Math.min(1,u.ent+dt*0.035);continue;}
+    if(!u.path||!u.path.length){u.path=null;u.tx=u.ty=null;u.ent=Math.min(1,u.ent+dt*STALE.ent);continue;}
     u.ent=Math.max(0,u.ent-dt*0.6);
     const [wx_,wy_]=u.path[0],dx=wx_-u.x,dy=wy_-u.y,d=Math.hypot(dx,dy);
     if(d<0.25*K){u.path.shift();continue;}
     const c=cellOf(u.x,u.y);
-    const sp=(1-0.4*u.fat/100)*T[u.type].speed*K*(u.eng?spdF(u.type,c,-1):spdF(u.type,c,u.side))*(M.river[c]?0.45:1)*(G.owner[c]!==u.side?0.75:1)*(u.eng?0.4:1)*(u.sup?1:0.7)*(1-0.45*obstacle(u));
+    const sp=(1-0.4*u.fat/100)*T[u.type].speed*K*(u.eng?spdF(u.type,c,-1):spdF(u.type,c,u.side))*(M.river[c]?0.45:1)*(G.owner[c]!==u.side?0.75:1)*(u.eng?0.4:1)*(u.sup?1:0.7)*(1-STALE.wire*obstacle(u));
     // in contact: pulling back is quicker than pushing on, and only a foe straight ahead stops the move (sidesteps and withdrawals always work)
     let ahead=0;for(const v of u.foes){const fx=v.x-u.x,fy=v.y-u.y,fd=Math.hypot(fx,fy)||1;ahead=Math.max(ahead,(fx*dx+fy*dy)/(fd*d));}
     const s=Math.min(d,sp*dt*(u.eng&&u.side===RED&&ahead<0.2?1.75:1)),nx=u.x+dx/d*s,ny=u.y+dy/d*s;
@@ -702,7 +705,7 @@ function logistics(dt){
     const rear=ne>SUP.rear*K;
     const dep=u.sup?supplyAt(u):0;
     if(u.sup)u.ammo=Math.min(100,u.ammo+(dep?(u.eng?SUP.depFront:SUP.dep)*dep:(u.eng?SUP.reFront:rear?SUP.reRear:SUP.reNear))*dt);
-    if(u.eng)u.fat+=1.1*dt;else if(u.path)u.fat+=(u.type==="arm"?0.8:0.55)*dt;else if(u.dig)u.fat+=0.15*dt;else u.fat-=(rear?3:1.2)*dt;
+    if(u.eng)u.fat+=(u.path?1.9:1.1)*dt;else if(u.path)u.fat+=(u.type==="arm"?0.8:0.55)*dt;else if(u.dig)u.fat+=0.15*dt;else u.fat-=(rear?3:1.2)*dt;
     u.fat=clamp(u.fat,0,100);
     if(u.relieve){const t=byId.get(u.relieve);
       if(!t||t.side!==u.side){u.relieve=0;continue;}
@@ -939,7 +942,7 @@ function claim(){
   const st=++G.stamp,touched=[];
   for(const u of G.units){
     if(atSea(u))continue;
-    const R=T[u.type].claim*K,arr=u.side===RED?G.claimR:G.claimB;
+    const R=T[u.type].claim*K*(u.eng?STALE.claimEng:1),arr=u.side===RED?G.claimR:G.claimB;
     const i0=Math.max(0,Math.floor((u.x-R)/CELL)),i1=Math.min(GW-1,Math.floor((u.x+R)/CELL));
     const j0=Math.max(0,Math.floor((u.y-R)/CELL)),j1=Math.min(GH-1,Math.floor((u.y+R)/CELL));
     for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
