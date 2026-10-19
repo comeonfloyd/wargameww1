@@ -157,7 +157,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
     <div id="cas" title="Killed (✝) and wounded (✚) since the battle began"><div><span class="r">Red</span><span id="casR">✝ 0 ✚ 0</span></div><div><span>Black</span><span id="casB">✝ 0 ✚ 0</span></div></div>
   </aside>
   <div class="plate" id="terr" hidden></div>
-  <div class="plate" id="suplegend" hidden><b>Supply</b><span><i style="background:#3E9A4A"></i>railhead depot</span><span><i style="background:#9DC24A"></i>cart-fed depot</span><span><i style="background:#E2B13C"></i>weak depot / trickle</span><span><i style="background:#D9822B"></i>trickle only</span><span><i style="background:#C9252C"></i>cut off</span><span><i style="background:#2E6EA0"></i>your railways</span><span id="supstat"></span></div>
+  <div class="plate" id="suplegend" hidden><b>Supply</b><span><i style="background:#3E9A4A"></i>railhead depot</span><span><i style="background:#9DC24A"></i>cart-fed depot</span><span><i style="background:#E2B13C"></i>weak depot / trickle</span><span><i style="background:#D9822B"></i>trickle only</span><span><i style="background:#C9252C"></i>cut off</span><span><i style="background:#5AAABE"></i>supplied by sea only</span><span><i style="background:#2E6EA0"></i>your railways</span><span id="supstat"></span></div>
   <nav class="plate" id="bar" aria-label="Orders" hidden>
     <div class="grp" role="group" aria-label="Map tool">
       <button id="tMove" aria-pressed="true" title="Move: drag a unit to send it; with a mouse, drag empty ground to box-select (middle-drag or arrow keys pan)">Move</button>
@@ -200,6 +200,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Trench warfare:</b> dug-in troops are hard to shift. Their machine guns cut down units advancing on them, trenches and wire soak up fire and slow attackers, troops assaulting tire quickly, and ground in contact changes hands slowly. Break a line by shelling it with artillery first, attacking with fresh troops, or going round it.</li>
       <li><b>Supply map</b> (button next to All, or S): colours your ground by supply. Dark green is in reach of a railhead depot, light green a cart-fed depot, yellow a weak depot, orange only a trickle, red cut off. Your working railways are blue and each depot's 16 km reach is ringed.</li>
       <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, about twice as fast as on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
+      <li><b>Supply by sea:</b> a port you hold that is supplied by land feeds every stretch of your shore on the same sea or lake, so islands, beachheads and cut-off coasts stay supplied as long as you keep a supplied port on that water. Away from depots this is only a trickle: build a depot at a port there (three-quarter rate) or on the beach (40%).</li>
       <li><b>Ships:</b> towns on a sea or lake shore are ports (⚓). Select troops, press <b>Ship</b> and tap a shore on the same water: they march to your nearest port, board and sail, then land, even on the enemy's coast (1 reserve per 3 divisions). Troops landing on ground that isn't yours arrive tired and short of ammunition, and guns that can see a transport will fire on it. Black lands troops behind your coast too. Try the East Prussia map.</li>
       <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only at a railhead (on your railway); fed by horse carts from a railway up to 25 km away it gives three quarters, by road with no railway near half, and in open country a quarter (marked <b>!</b> or <b>!!</b>). Troops cut off from supply starve: they lose ammunition, strength and freshness fast. Build depots with <b>+Depot</b> (2 reserves, no limit); with +Depot pressed, tap one of your depots to dismantle it for 1 reserve back and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
@@ -746,7 +747,9 @@ function addDepot(s,x,y){const d={id:G.nid++,s,x,y,hp:DEPOT.hp};G.depots.push(d)
    within 25 km gives three quarters, a road with no railway near half, open country a quarter */
 function nearOwnRail(x,y,r,s){const n=Math.ceil(r/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);let best=1e9;
   for(let j=Math.max(0,j0-n);j<=Math.min(GH-1,j0+n);j++)for(let i=Math.max(0,i0-n);i<=Math.min(GW-1,i0+n);i++){const c=j*GW+i;if(M.rail[c]&&G.owner[c]===s&&G.sup[s][c]){const d=Math.hypot(cx(c)-x,cy(c)-y);if(d<best)best=d;}}return best;}
-function rateDepot(d){const r=nearOwnRail(d.x,d.y,25*K,d.s),road=nearRoad(d.x,d.y,1.5*K);d.eff=r<2*K?1:road&&r<25*K?0.75:road?0.45:0.25;d.link=r<2*K?"rail":road&&r<25*K?"cart":road?"road":"none";}
+function rateDepot(d){const c0=cellOf(d.x,d.y);
+  if(G.seaSup&&G.seaSup[d.s][c0]){const port=M.towns.some(t=>t.port&&G.owner[t.c]===d.s&&Math.hypot(t.x-d.x,t.y-d.y)<5*K);d.eff=port?0.75:0.4;d.link=port?"port":"shore";return;}
+  const r=nearOwnRail(d.x,d.y,25*K,d.s),road=nearRoad(d.x,d.y,1.5*K);d.eff=r<2*K?1:road&&r<25*K?0.75:road?0.45:0.25;d.link=r<2*K?"rail":road&&r<25*K?"cart":road?"road":"none";}
 const depotEff=d=>{if(d.eff==null)rateDepot(d);return d.eff;};
 function supplyAt(u){let best=0;const R=DEPOT.r*K;
   for(const d of G.depots)if(d.s===u.side&&Math.hypot(d.x-u.x,d.y-u.y)<R&&G.sup[d.s][cellOf(d.x,d.y)])best=Math.max(best,depotEff(d));
@@ -759,7 +762,7 @@ function placeDepot(x,y){
   const c=cellOf(x,y);if(M.water[c]||G.owner[c]!==RED||!G.sup[RED][c]){toast("Build depots on your own supplied ground");return;}
   if(G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<8*K)){toast("Too close to the enemy");return;}
   const d=addDepot(RED,x,y);G.res[RED]-=DEPOT.cost;G.supDirty=true;
-  rateDepot(d);toast({rail:"Depot at a railhead: full supply within 16 km",cart:"Depot fed by horse carts from a railway: three-quarter supply",road:"No railway within 25 km: half supply. Build it nearer a railway, or lay one with Rail",none:"Depot in open country: quarter supply. Put it on a road near a railway"}[d.link]);syncUI();}
+  rateDepot(d);toast({rail:"Depot at a railhead: full supply within 16 km",cart:"Depot fed by horse carts from a railway: three-quarter supply",port:"Depot at a port supplied by sea: three-quarter supply",shore:"Supplied by sea over an open beach: 40%. Build it at a port for more",road:"No railway within 25 km: half supply. Build it nearer a railway, or lay one with Rail",none:"Depot in open country: quarter supply. Put it on a road near a railway"}[d.link]);syncUI();}
 function rasterRoad(r){const A=r.rail?M.rail:M.road;for(let k=1;k<r.pts.length;k++){const [x0,y0]=r.pts[k-1],[x1,y1]=r.pts[k],n=Math.ceil(Math.hypot(x1-x0,y1-y0)/(CELL*0.4));
   for(let m=0;m<=n;m++){const c=cellOf(x0+(x1-x0)*m/n,y0+(y1-y0)*m/n);if(!M.water[c]&&G.owner[c]===r.s)A[c]=1;}}}
 function buildRoad(raw,rail){
@@ -982,8 +985,18 @@ function computeSupply(){
     const vis=G.sup[s];vis.fill(0);let h=0,t=0;
     for(const c of G.src[s])if(O[c]===s&&!vis[c]){vis[c]=1;q[t++]=c;}
     const hq=M.hq[s];if(hq&&O[hq.c]===s&&!vis[hq.c]){vis[hq.c]=1;q[t++]=hq.c;}
-    while(h<t){const c=q[h++],i=c%GW;
-      for(const n of [i>0?c-1:-1,i<GW-1?c+1:-1,c-GW,c+GW])if(n>=0&&n<NC&&!vis[n]&&!W_[n]&&O[n]===s){vis[n]=1;q[t++]=n;}}
+    const flood=()=>{while(h<t){const c=q[h++],i=c%GW;
+      for(const n of [i>0?c-1:-1,i<GW-1?c+1:-1,c-GW,c+GW])if(n>=0&&n<NC&&!vis[n]&&!W_[n]&&O[n]===s){vis[n]=1;q[t++]=n;}}};
+    flood();
+    // by sea: a supplied port feeds every stretch of your shore on the same sea or lake (islands, beachheads, cut-off coasts)
+    if(!G.seaSup||G.seaSup[s].length!==NC)G.seaSup=[new Uint8Array(NC),new Uint8Array(NC)];const sea=G.seaSup[s];sea.fill(0);
+    if(M.wcomp)for(let round=0;round<4;round++){
+      const C=new Set();for(const tw of M.towns)if(tw.port&&O[tw.c]===s&&vis[tw.c])C.add(M.wcomp[cellOf(tw.port[0],tw.port[1])]);
+      if(!C.size)break;const t0=t;
+      for(let c=0;c<NC;c++){if(W_[c]||O[c]!==s||vis[c])continue;const i=c%GW;
+        for(const n of [i>0?c-1:-1,i<GW-1?c+1:-1,c-GW,c+GW])if(n>=0&&n<NC&&W_[n]&&C.has(M.wcomp[n])){vis[c]=1;sea[c]=1;q[t++]=c;break;}}
+      if(t===t0)break;const h0=h;flood();for(let k=h0;k<t;k++)sea[q[k]]=1;
+    }
   }
   for(const s of [RED,BLK]){
     const vis=G.sup[s],seen=new Uint8Array(NC),occ=new Uint8Array(NC);
@@ -1406,13 +1419,13 @@ function drawSupplyMap(){
   if(!supCv||supCv.width!==GW||supCv.height!==GH){supCv=document.createElement("canvas");supCv.width=GW;supCv.height=GH;supx=supCv.getContext("2d");supimg=supx.createImageData(GW,GH);G.supDirty=true;}
   if(G.supDirty){G.supDirty=false;const d=supimg.data,R=DEPOT.r*K,src=G.depots.filter(q=>q.s===RED&&G.sup[RED][cellOf(q.x,q.y)]).map(q=>[q.x,q.y,depotEff(q)]);
     const h=M.hq[RED];if(h&&G.owner[h.c]===RED)src.push([h.x,h.y,1]);
-    const col={rail:[62,154,74],cart:[157,194,74],weak:[226,177,60],trickle:[217,130,43],cut:[201,37,44],line:[46,110,160]};
+    const col={rail:[62,154,74],cart:[157,194,74],weak:[226,177,60],trickle:[217,130,43],cut:[201,37,44],line:[46,110,160],sea:[90,170,190]};
     for(let c=0;c<NC;c++){const o=c*4;let k=null;
       if(!M.water[c]&&G.owner[c]===RED){
         if(M.rail[c]&&G.sup[RED][c])k="line";
         else if(!G.sup[RED][c])k="cut";
         else{let b=0;const x=cx(c),y=cy(c);for(const q of src)if(q[2]>b&&Math.abs(q[0]-x)<R&&Math.abs(q[1]-y)<R&&Math.hypot(q[0]-x,q[1]-y)<R)b=q[2];
-          k=b>=1?"rail":b>=0.75?"cart":b>0?"weak":"trickle";}}
+          k=b>=1?"rail":b>=0.75?"cart":b>0?"weak":G.seaSup&&G.seaSup[RED][c]?"sea":"trickle";}}
       if(!k){d[o+3]=0;continue;}const v=col[k];d[o]=v[0];d[o+1]=v[1];d[o+2]=v[2];d[o+3]=k==="line"?235:k==="cut"?150:105;}
     supx.putImageData(supimg,0,0);}
   ctx.imageSmoothingEnabled=false;ctx.drawImage(supCv,sx(0),sy(0),GW*CELL*cam.s,GH*CELL*cam.s);ctx.imageSmoothingEnabled=true;
