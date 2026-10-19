@@ -196,7 +196,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Trench warfare:</b> dug-in troops are hard to shift. Their machine guns cut down units advancing on them, trenches and wire soak up fire and slow attackers, troops assaulting tire quickly, and ground in contact changes hands slowly. Break a line by shelling it with artillery first, attacking with fresh troops, or going round it.</li>
       <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, about twice as fast as on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
       <li><b>Ships:</b> towns on a sea or lake shore are ports (⚓). Select troops, press <b>Ship</b> and tap a shore on the same water: they march to your nearest port, board and sail, then land, even on the enemy's coast (1 reserve per 3 divisions). Troops landing on ground that isn't yours arrive tired and short of ammunition, and guns that can see a transport will fire on it. Black lands troops behind your coast too. Try the East Prussia map.</li>
-      <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only on a road (a <b>!</b> marks one that is off-road). Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
+      <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only at a railhead (on your railway); fed by horse carts from a railway up to 25 km away it gives three quarters, by road with no railway near half, and in open country a quarter (marked <b>!</b> or <b>!!</b>). Troops cut off from supply starve: they lose ammunition, strength and freshness fast. Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
       <li>Units take ground around them. Troops cut off from their own map edges and HQ wither. Water is impassable.</li>
@@ -697,7 +697,7 @@ function step(dt){
 /* ammunition and fatigue. Fighting burns ammunition, which only comes up the supply line, slowly at the front and fast in the rear.
    Marching, fighting and digging tire troops; they recover standing still, quickest well behind the line.
    Relief: drag a fresh unit onto a tired one; when it arrives it takes over the position and the tired unit falls back to rest. */
-const SUP={burn:{inf:2.4,arm:2,art:1},shell:6,reFront:0.35,reNear:1,reRear:2.5,rear:16,dep:7,depFront:2.2};
+const SUP={burn:{inf:2.4,arm:2,art:1},shell:6,reFront:0.12,reNear:0.4,reRear:1.1,rear:16,dep:7,depFront:2.2,cutAmmo:1.2,cutFat:1.3};
 function logistics(dt){
   const byId=new Map(G.units.map(u=>[u.id,u]));
   for(const u of G.units){
@@ -705,7 +705,8 @@ function logistics(dt){
     const rear=ne>SUP.rear*K;
     const dep=u.sup?supplyAt(u):0;
     if(u.sup)u.ammo=Math.min(100,u.ammo+(dep?(u.eng?SUP.depFront:SUP.dep)*dep:(u.eng?SUP.reFront:rear?SUP.reRear:SUP.reNear))*dt);
-    if(u.eng)u.fat+=(u.path?1.9:1.1)*dt;else if(u.path)u.fat+=(u.type==="arm"?0.8:0.55)*dt;else if(u.dig)u.fat+=0.15*dt;else u.fat-=(rear?3:1.2)*dt;
+    else if(!u.sea){u.ammo=Math.max(0,u.ammo-SUP.cutAmmo*dt);u.fat+=SUP.cutFat*dt;} // cut off: no food, no shells, the pocket starves
+    if(!u.sup&&!u.sea){/* hunger is counted above */}else if(u.eng)u.fat+=(u.path?1.9:1.1)*dt;else if(u.path)u.fat+=(u.type==="arm"?0.8:0.55)*dt;else if(u.dig)u.fat+=0.15*dt;else u.fat-=(rear?3:1.2)*(dep?1:0.6)*dt;
     u.fat=clamp(u.fat,0,100);
     if(u.relieve){const t=byId.get(u.relieve);
       if(!t||t.side!==u.side){u.relieve=0;continue;}
@@ -729,10 +730,19 @@ function seedDepots(){ // starting depots spread along the whole front, about on
   const P=extendToEdges(FRONT),seg=[0];for(let k=1;k<P.length;k++)seg.push(seg[k-1]+Math.hypot(P[k][0]-P[k-1][0],P[k][1]-P[k-1][1]));
   const len=seg[seg.length-1],at=d=>{let s=1;while(s<seg.length-1&&seg[s]<d)s++;const t=(d-seg[s-1])/((seg[s]-seg[s-1])||1);return [P[s-1][0]+(P[s][0]-P[s-1][0])*t,P[s-1][1]+(P[s][1]-P[s-1][1])*t];};
   const n=clamp(Math.round(len/K/25),3,6);
-  for(const s of [RED,BLK])for(let k=0;k<n;k++){const p=at((k+.5)/n*len),q=intoSide(p[0],p[1],s,11*K);if(q){const r=snapRoad(q[0],q[1],s);addDepot(s,r[0],r[1]);}}
+  for(const s of [RED,BLK])for(let k=0;k<n;k++){const p=at((k+.5)/n*len),q=intoSide(p[0],p[1],s,11*K);if(q){const r=snapDepot(q[0],q[1],s);addDepot(s,r[0],r[1]);}}
 }
+function snapDepot(x,y,s){ // a railhead within 8 km if there is one, else the nearest road
+  const n=Math.ceil(8*K/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);let best=null,bd=1e9;
+  for(let j=Math.max(0,j0-n);j<=Math.min(GH-1,j0+n);j++)for(let i=Math.max(0,i0-n);i<=Math.min(GW-1,i0+n);i++){const c=j*GW+i;if(!M.rail[c]||M.water[c]||G.owner[c]!==s)continue;const d=Math.hypot(cx(c)-x,cy(c)-y);if(d<bd){bd=d;best=[cx(c),cy(c)];}}
+  return best||snapRoad(x,y,s);}
 function addDepot(s,x,y){const d={id:G.nid++,s,x,y,hp:DEPOT.hp};G.depots.push(d);return d;}
-const depotEff=d=>nearRoad(d.x,d.y,1.5*K)?1:DEPOT.offRoad;
+/* a depot is only as good as its link to the railway: at a railhead it works at full rate, a road haul by horse cart from a railhead
+   within 25 km gives three quarters, a road with no railway near half, open country a quarter */
+function nearOwnRail(x,y,r,s){const n=Math.ceil(r/CELL),i0=Math.floor(x/CELL),j0=Math.floor(y/CELL);let best=1e9;
+  for(let j=Math.max(0,j0-n);j<=Math.min(GH-1,j0+n);j++)for(let i=Math.max(0,i0-n);i<=Math.min(GW-1,i0+n);i++){const c=j*GW+i;if(M.rail[c]&&G.owner[c]===s&&G.sup[s][c]){const d=Math.hypot(cx(c)-x,cy(c)-y);if(d<best)best=d;}}return best;}
+function rateDepot(d){const r=nearOwnRail(d.x,d.y,25*K,d.s),road=nearRoad(d.x,d.y,1.5*K);d.eff=r<2*K?1:road&&r<25*K?0.75:road?0.45:0.25;d.link=r<2*K?"rail":road&&r<25*K?"cart":road?"road":"none";}
+const depotEff=d=>{if(d.eff==null)rateDepot(d);return d.eff;};
 function supplyAt(u){let best=0;const R=DEPOT.r*K;
   for(const d of G.depots)if(d.s===u.side&&Math.hypot(d.x-u.x,d.y-u.y)<R&&G.sup[d.s][cellOf(d.x,d.y)])best=Math.max(best,depotEff(d));
   const h=M.hq[u.side];if(h&&G.owner[h.c]===u.side&&Math.hypot(h.x-u.x,h.y-u.y)<R)best=1;return best;}
@@ -742,7 +752,7 @@ function placeDepot(x,y){
   const c=cellOf(x,y);if(M.water[c]||G.owner[c]!==RED||!G.sup[RED][c]){toast("Build depots on your own supplied ground");return;}
   if(G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<8*K)){toast("Too close to the enemy");return;}
   const d=addDepot(RED,x,y);G.res[RED]-=DEPOT.cost;if(G.res[RED]<DEPOT.cost)G.placing=null;
-  toast(depotEff(d)===1?"Depot built on a road: full supply within 16 km":"Depot built off-road: under half supply. Build it on a road, or draw a Road to it");syncUI();}
+  rateDepot(d);toast({rail:"Depot at a railhead: full supply within 16 km",cart:"Depot fed by horse carts from a railway: three-quarter supply",road:"No railway within 25 km: half supply. Build it nearer a railway, or lay one with Rail",none:"Depot in open country: quarter supply. Put it on a road near a railway"}[d.link]);syncUI();}
 function rasterRoad(r){const A=r.rail?M.rail:M.road;for(let k=1;k<r.pts.length;k++){const [x0,y0]=r.pts[k-1],[x1,y1]=r.pts[k],n=Math.ceil(Math.hypot(x1-x0,y1-y0)/(CELL*0.4));
   for(let m=0;m<=n;m++){const c=cellOf(x0+(x1-x0)*m/n,y0+(y1-y0)*m/n);if(!M.water[c]&&G.owner[c]===r.s)A[c]=1;}}}
 function buildRoad(raw,rail){
@@ -753,6 +763,7 @@ function buildRoad(raw,rail){
   const cost=Math.max(1,Math.ceil(len/K/B.per));if(G.res[RED]<cost){toast(`That ${what} needs ${cost} reserve${cost>1?"s":""}`);return;}
   G.res[RED]-=cost;G.roads.push({s:RED,pts,len,done:0,rail:!!rail});toast(`${rail?"Railway troops":"Pioneers"} building ${Math.round(len/K)} km of ${what} (${cost} reserve${cost>1?"s":""})`);syncUI();}
 function stepDepots(dt){
+  for(const d of G.depots)rateDepot(d);
   for(const r of G.roads)if(r.done<r.len){r.done=Math.min(r.len,r.done+(r.rail?RAILB:ROADB).speed*K*dt);if(r.done>=r.len){rasterRoad(r);buildCosts();if(r.s===RED)toast(r.rail?"Railway finished: trains run on it while the ground is yours":"Road finished");}}
   G.depots=G.depots.filter(d=>{if(d.hp>0&&G.owner[cellOf(d.x,d.y)]===d.s)return true;
     G.fx.push({k:"bomb",x:d.x,y:d.y,t:0});if(d.s===RED)toast(d.hp>0?"A depot was overrun":"A depot was destroyed by shelling");return false;});
@@ -1078,7 +1089,7 @@ function aiSpendReserves(initial){
   const nDep=G.depots.filter(d=>d.s===BLK).length;
   if(!initial&&nDep<3&&G.res[BLK]<DEPOT.cost)return; // save up to replace a lost depot
   if(!initial&&G.res[BLK]>=DEPOT.cost&&nDep<3){
-    FIELD=field();const [x0,y0]=awayFromRed(F[Math.floor(Math.random()*F.length)],12*K),[x,y]=snapRoad(x0,y0,BLK),c=cellOf(x,y);
+    FIELD=field();const [x0,y0]=awayFromRed(F[Math.floor(Math.random()*F.length)],12*K),[x,y]=snapDepot(x0,y0,BLK),c=cellOf(x,y);
     if(!M.water[c]&&G.owner[c]===BLK&&G.sup[BLK][c]){addDepot(BLK,x,y);G.res[BLK]-=DEPOT.cost;}}
   if(G.units.filter(u=>u.side===BLK).length>=MAXUNITS)return;
   FIELD=field();const hq=M.hq[BLK];
@@ -1270,7 +1281,7 @@ function drawRoadsDepots(){
     const sw=z*0.5;for(const k of [-1,0,1]){const bx=x+k*z*0.68,h=k?z*1.15:z*1.45,top=y+z*0.45-h;
       ctx.beginPath();ctx.moveTo(bx-sw/2,y+z*0.45);ctx.lineTo(bx-sw/2,top+sw*0.6);ctx.quadraticCurveTo(bx,top-sw*0.5,bx+sw/2,top+sw*0.6);ctx.lineTo(bx+sw/2,y+z*0.45);ctx.closePath();
       ctx.fillStyle="#C9A24A";ctx.fill();ctx.strokeStyle="#3A2E1A";ctx.lineWidth=1;ctx.stroke();}
-    if(depotEff(d)<1){ctx.fillStyle="#E2B13C";ctx.font=`600 ${Math.round(z*1.2)}px ${FONT_MONO}`;ctx.textAlign="center";ctx.fillText("!",x+z*1.6,y+z*0.4);ctx.textAlign="left";}
+    if(depotEff(d)<1){ctx.fillStyle=d.eff<0.5?"#E2593C":"#E2B13C";ctx.font=`600 ${Math.round(z*1.2)}px ${FONT_MONO}`;ctx.textAlign="center";ctx.fillText(d.eff<0.5?"!!":"!",x+z*1.6,y+z*0.4);ctx.textAlign="left";}
     if(d.hp<DEPOT.hp){ctx.fillStyle="rgba(28,30,26,.6)";ctx.fillRect(x-z,y+z,2*z,3);ctx.fillStyle="#E2593C";ctx.fillRect(x-z,y+z,2*z*Math.max(0,d.hp)/DEPOT.hp,3);}}
 }
 function drawScars(now){
