@@ -201,7 +201,7 @@ input[type=text],input[type=number]{font:400 14px var(--f-body);background:var(-
       <li><b>Supply map</b> (button next to All, or S): colours your ground by supply. Dark green is in reach of a railhead depot, light green a cart-fed depot, yellow a weak depot, orange only a trickle, red cut off. Your working railways are blue and each depot's 16 km reach is ringed.</li>
       <li><b>Railways</b> (dark lines with sleepers): troops on a railway inside your own ground and out of contact travel by train, about twice as fast as on a road, and route along the lines on their own. Enemy ground cuts the line. Draw new lines with <b>Rail</b> (1 reserve per 12 km, built more slowly than a road) and new roads with <b>Road</b>.</li>
       <li><b>Ships:</b> towns on a sea or lake shore are ports (⚓). Select troops, press <b>Ship</b> and tap a shore on the same water: they march to your nearest port, board and sail, then land, even on the enemy's coast (1 reserve per 3 divisions). Troops landing on ground that isn't yours arrive tired and short of ammunition, and guns that can see a transport will fire on it. Black lands troops behind your coast too. Try the East Prussia map.</li>
-      <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only at a railhead (on your railway); fed by horse carts from a railway up to 25 km away it gives three quarters, by road with no railway near half, and in open country a quarter (marked <b>!</b> or <b>!!</b>). Troops cut off from supply starve: they lose ammunition, strength and freshness fast. Build depots with <b>+Depot</b> (2 reserves) and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
+      <li><b>Supply:</b> troops within 16 km of one of your <b>depots</b> (stacks of shells) or your HQ restock fast; elsewhere ammunition only trickles in. A depot works at full rate only at a railhead (on your railway); fed by horse carts from a railway up to 25 km away it gives three quarters, by road with no railway near half, and in open country a quarter (marked <b>!</b> or <b>!!</b>). Troops cut off from supply starve: they lose ammunition, strength and freshness fast. Build depots with <b>+Depot</b> (2 reserves, no limit); with +Depot pressed, tap one of your depots to dismantle it for 1 reserve back and lay field roads with <b>Road</b> (1 reserve per 25 km). Finished roads also speed up marches. Depots are lost if the enemy takes their ground, and enemy guns shell them.</li>
       <li><b>Relief:</b> drag a fresh unit onto a tired one. When it arrives it takes over the position and its trench, and the tired unit falls back to rest and resupply.</li>
       <li><b>Breaking off a fight:</b> troops in contact can't push straight through an enemy, but you can always order them back or sideways. Withdrawing units move faster than attackers.</li>
       <li>Units take ground around them. Troops cut off from their own map edges and HQ wither. Water is impassable.</li>
@@ -752,11 +752,13 @@ function supplyAt(u){let best=0;const R=DEPOT.r*K;
   for(const d of G.depots)if(d.s===u.side&&Math.hypot(d.x-u.x,d.y-u.y)<R&&G.sup[d.s][cellOf(d.x,d.y)])best=Math.max(best,depotEff(d));
   const h=M.hq[u.side];if(h&&G.owner[h.c]===u.side&&Math.hypot(h.x-u.x,h.y-u.y)<R)best=1;return best;}
 function placeDepot(x,y){
-  if(G.res[RED]<DEPOT.cost){toast("A depot costs 2 reserves");return;}
-  if(G.depots.filter(d=>d.s===RED).length>=DEPOT.max){toast("Depot cap reached");return;}
+  const old=G.depots.find(d=>d.s===RED&&Math.hypot(d.x-x,d.y-y)<Math.max(1.5*K,16/cam.s));
+  if(old){G.depots=G.depots.filter(d=>d!==old);G.res[RED]=Math.min(9,G.res[RED]+1);G.supDirty=true;G.fx.push({k:"die",x:old.x,y:old.y,t:0,side:RED});
+    toast("Depot dismantled: 1 reserve back. Tap elsewhere to build a new one");syncUI();return;}
+  if(G.res[RED]<DEPOT.cost){toast("A depot costs 2 reserves (tap one of your depots to dismantle it for 1 back)");return;}
   const c=cellOf(x,y);if(M.water[c]||G.owner[c]!==RED||!G.sup[RED][c]){toast("Build depots on your own supplied ground");return;}
   if(G.units.some(u=>u.side===BLK&&Math.hypot(u.x-x,u.y-y)<8*K)){toast("Too close to the enemy");return;}
-  const d=addDepot(RED,x,y);G.res[RED]-=DEPOT.cost;if(G.res[RED]<DEPOT.cost)G.placing=null;
+  const d=addDepot(RED,x,y);G.res[RED]-=DEPOT.cost;G.supDirty=true;
   rateDepot(d);toast({rail:"Depot at a railhead: full supply within 16 km",cart:"Depot fed by horse carts from a railway: three-quarter supply",road:"No railway within 25 km: half supply. Build it nearer a railway, or lay one with Rail",none:"Depot in open country: quarter supply. Put it on a road near a railway"}[d.link]);syncUI();}
 function rasterRoad(r){const A=r.rail?M.rail:M.road;for(let k=1;k<r.pts.length;k++){const [x0,y0]=r.pts[k-1],[x1,y1]=r.pts[k],n=Math.ceil(Math.hypot(x1-x0,y1-y0)/(CELL*0.4));
   for(let m=0;m<=n;m++){const c=cellOf(x0+(x1-x0)*m/n,y0+(y1-y0)*m/n);if(!M.water[c]&&G.owner[c]===r.s)A[c]=1;}}}
@@ -1669,7 +1671,7 @@ $("bDig").onclick=digIn;
 $("bInf").onclick=()=>{G.airMode=null;G.placing=G.placing==="inf"?null:"inf";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place infantry");syncUI();};
 $("bArm").onclick=()=>{G.placing=G.placing==="arm"?null:"arm";if(G.placing)toast(G.phase==="battle"?"Tap near a circled city: reinforcements arrive there by rail":"Tap your own ground to place cavalry");syncUI();};
 $("bRecon").onclick=()=>{G.placing=G.placing==="recon"?null:"recon";if(G.placing)toast("Tap where the recon plane should fly");syncUI();};
-$("bDepot").onclick=()=>{G.placing=G.placing==="depot"?null:"depot";if(G.placing)toast("Tap your own ground to build a depot, ideally on a road");syncUI();};
+$("bDepot").onclick=()=>{G.placing=G.placing==="depot"?null:"depot";if(G.placing)toast("Tap your ground to build a depot (best on a railway), or tap one of your depots to dismantle it");syncUI();};
 $("tShip").onclick=()=>{if(tool==="ship"){setTool("move");return;}if(!G.sel.size){toast("Select the troops to ship first");return;}setTool("ship");toast("Tap the shore where they should land (ports you can sail from are circled blue)");};
 $("tRail").onclick=()=>{setTool(tool==="rail"?"move":"rail");if(tool==="rail")toast("Draw the railway, starting on your own ground");};
 $("tRoad").onclick=()=>{setTool(tool==="road"?"move":"road");if(tool==="road")toast("Draw the road, starting on your own ground");};
@@ -1739,8 +1741,8 @@ function hud(){
   $("casR").textContent=`✝ ${fm(cas.dead[RED])} ✚ ${fm(cas.wnd[RED])}`;$("casB").textContent=`✝ ${fm(cas.dead[BLK])} ✚ ${fm(cas.wnd[BLK])}`;
   $("forces").textContent=`${n[0]} vs ${n[1]} div`+(enc[0]?` · ${enc[0]} cut off`:"");$("forces").title=`Divisions ${n[0]} vs ${n[1]}`+(enc[0]?`, ${enc[0]} of yours cut off`:"")+(enc[1]?`, ${enc[1]} enemy cut off`:"");
   $("reserve").firstChild.textContent=`${G.res[RED]} RES`;$("resfill").style.width=(G.phase==="battle"?G.inc[RED]*100:0)+"%";
-  const di=G.res[RED]<1||G.phase==="over",da=G.res[RED]<2||G.phase==="over";if($("bInf").disabled!==di)$("bInf").disabled=di;if($("bArm").disabled!==da)$("bArm").disabled=da;if($("bArt").disabled!==da)$("bArt").disabled=da;if($("bDepot").disabled!==da)$("bDepot").disabled=da;if($("bRecon").disabled!==di)$("bRecon").disabled=di;$("bRecon").setAttribute("aria-pressed",String(G.placing==="recon"));$("bDepot").setAttribute("aria-pressed",String(G.placing==="depot"));
-  if(G.placing&&G.res[RED]<(T[G.placing]?T[G.placing].cost:DEPOT.cost)){G.placing=null;syncUI();}
+  const di=G.res[RED]<1||G.phase==="over",da=G.res[RED]<2||G.phase==="over";if($("bInf").disabled!==di)$("bInf").disabled=di;if($("bArm").disabled!==da)$("bArm").disabled=da;if($("bArt").disabled!==da)$("bArt").disabled=da;if($("bDepot").disabled!==(G.phase==="over"))$("bDepot").disabled=G.phase==="over";if($("bRecon").disabled!==di)$("bRecon").disabled=di;$("bRecon").setAttribute("aria-pressed",String(G.placing==="recon"));$("bDepot").setAttribute("aria-pressed",String(G.placing==="depot"));
+  if(G.placing&&G.placing!=="depot"&&G.res[RED]<(T[G.placing]?T[G.placing].cost:INTEL.plane.cost)){G.placing=null;syncUI();}
 }
 
 /* ================= LOOP ================= */
